@@ -22,7 +22,7 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- GEMINI ANALYSIS (Model Changed to 1.5 Flash) ---
+# --- GEMINI ANALYSIS (Model Fixed to Stable Version) ---
 def get_analysis(title, link):
     print(f"DEBUG: Attempting to summarize: {title[:30]}...") 
     empty_output = ""
@@ -43,9 +43,10 @@ def get_analysis(title, link):
         Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
         """
         
-        # 👇 CHANGED MODEL TO 1.5-FLASH (Better Limits)
+        # 👇 CHANGED MODEL TO 'gemini-1.5-flash-001' (Stable Version ID)
+        # Yeh ID 404 error fix karega
         response = client.models.generate_content(
-            model='gemini-1.5-flash', 
+            model='gemini-1.5-flash-001', 
             contents=prompt,
             config={"response_mime_type": "application/json"}
         )
@@ -138,7 +139,7 @@ def main():
                 if entry.link not in seen:
                     summary, impact = get_analysis(entry.title, entry.link)
                     
-                    # 👇 VALIDATION: Agar Gemini fail hua, toh item list mein mat daalo
+                    # VALIDATION: Agar Gemini fail hua, toh skip karo
                     if not summary or not impact:
                         print("⚠️ Skipping item due to failed Gemini generation.")
                         continue
@@ -151,9 +152,9 @@ def main():
                     })
                     seen.add(entry.link)
                     
-                    # 👇 DELAY INCREASED: 10 seconds wait to avoid 429 Error
-                    print("⏳ Waiting 10s for API cooldown...")
-                    time.sleep(10)
+                    # DELAY: 5 seconds wait (Flash model fast hai, par safe raho)
+                    print("⏳ Waiting 5s...")
+                    time.sleep(5)
                     
     except Exception as e:
         print(f"❌ Feed parsing error: {e}")
