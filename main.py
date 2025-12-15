@@ -19,45 +19,81 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- GEMINI SUMMARIZATION ---
-def get_summary(title, link):
+# --- GEMINI ANALYSIS (Summary + Impact) ---
+def get_analysis(title, link):
     try:
         client = genai.Client(api_key=GEMINI_KEY)
-        prompt = f"Summarize this news in 2 short bullet points for a blog post. Focus on facts. News: {title} - {link}"
+        # Prompt ko change kiya taki wo 'Summary' aur 'Impact' dono de
+        prompt = f"""
+        Analyze this AI news article title: "{title}"
+        Link: {link}
+        
+        Output exactly 2 lines (no bold, no markdown):
+        Line 1: A simple 1-sentence summary of what happened.
+        Line 2: A simple 1-sentence explanation of the impact/why it matters.
+        """
         response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-        text = response.text.replace("* ", "<li>").replace("\n", "</li>")
-        return text if "<li>" in text else f"<li>{text}</li>"
+        lines = response.text.strip().split('\n')
+        
+        # Fallback agar Gemini format follow na kare
+        summary = lines[0] if len(lines) > 0 else "Click to read more."
+        impact = lines[1] if len(lines) > 1 else "Significant industry impact expected."
+        
+        return summary, impact
     except:
-        return "<li>Click link to read full update.</li>"
+        return "Click link to read full update.", "Check article for details."
 
-# --- GENERATE TAILWIND HTML ---
+# --- GENERATE DESIGN MATCH HTML ---
 def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
-    cards = ""
+    
+    # Material Icons Link add kiya hai taki Icons dikhein
+    cards = """<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />"""
     
     for i, item in enumerate(news_items):
         cards += f"""
-        <article class="group relative bg-white border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-xl transition-all duration-300 mb-6">
-            <h3 class="text-xl font-bold mb-4 text-gray-900">
+        <div style="background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.03);">
+            
+            <h3 style="font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 20px; line-height: 1.4;">
                 {i+1}. {item['title']}
             </h3>
-            <div class="bg-gray-50 p-4 rounded-lg mb-4">
-                <strong class="text-blue-600 block mb-2 text-xs uppercase">AI Summary</strong>
-                <ul class="list-disc pl-4 text-sm text-gray-700 space-y-2">{item['summary']}</ul>
+            
+            <div style="background: #fcfcfc; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <span class="material-symbols-outlined" style="color: #ef4444; font-size: 20px; margin-right: 8px;">psychology</span>
+                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">GEMINI SUMMARY</strong>
+                </div>
+                <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">
+                    {item['summary']}
+                </p>
             </div>
-            <a class="text-blue-600 font-bold text-sm hover:underline" href="{item['link']}">Read Full Story →</a>
-        </article>
+
+            <div style="background: #fcfcfc; border-radius: 12px; padding: 16px; border: 1px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <span class="material-symbols-outlined" style="color: #3b82f6; font-size: 20px; margin-right: 8px;">bolt</span>
+                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">IMPACT</strong>
+                </div>
+                <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">
+                    {item['impact']}
+                </p>
+            </div>
+            
+            <div style="margin-top: 20px; text-align: right;">
+                <a href="{item['link']}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center;">
+                    Read Full Story <span class="material-symbols-outlined" style="font-size: 18px; margin-left: 4px;">arrow_forward</span>
+                </a>
+            </div>
+
+        </div>
         """
         
     final_html = f"""
-    <div style="font-family: sans-serif; max-width: 800px; margin: 0 auto;">
-        <p style="color: #666; font-size: 12px; margin-bottom: 20px;">📅 {date_str} • Automated AI Digest</p>
-        {cards}
-        <div style="margin-top: 40px; padding: 20px; background: #222; color: #fff; border-radius: 12px; text-align: center;">
-             <h3 style="margin:0 0 10px 0;">🚀 Boost Your Productivity</h3>
-             <p style="color: #aaa; margin-bottom: 15px;">Use AI tools to work faster.</p>
-             <a href="#" style="background: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold;">Explore Tools</a>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <span style="background: #fee2e2; color: #ef4444; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">🔥 Top AI News</span>
+            <span style="color: #9ca3af; font-size: 13px;">{date_str}</span>
         </div>
+        {cards}
     </div>
     """
     return final_html, date_str
@@ -67,18 +103,26 @@ def main():
     print("📰 Collecting News...")
     items = []
     seen = set()
-    for url in RSS_FEEDS:
-        try:
+    
+    # Error handling ke sath feed fetch
+    try:
+        for url in RSS_FEEDS:
             feed = feedparser.parse(url)
             for entry in feed.entries[:2]: # Har feed se top 2 news
                 if entry.link not in seen:
-                    print(f"Summarizing: {entry.title[:30]}...")
-                    summary = get_summary(entry.title, entry.link)
-                    items.append({'title': entry.title, 'link': entry.link, 'summary': summary})
+                    print(f"Analyzing: {entry.title[:30]}...")
+                    # Ab Summary aur Impact dono le rahe hain
+                    summary, impact = get_analysis(entry.title, entry.link)
+                    items.append({
+                        'title': entry.title, 
+                        'link': entry.link, 
+                        'summary': summary,
+                        'impact': impact
+                    })
                     seen.add(entry.link)
-        except Exception as e:
-            print(f"Feed Error: {e}")
-    
+    except Exception as e:
+        print(f"Feed parsing error: {e}")
+
     if items:
         html, date = make_html(items[:5]) # Top 5 only
         
@@ -90,9 +134,9 @@ def main():
             service = build('blogger', 'v3', credentials=creds)
             
             body = {
-                'title': f"🤖 AI Updates | {date}",
+                'title': f"⚡ AI Impact Digest | {date}",
                 'content': html,
-                'labels': ['AI News', 'Automated']
+                'labels': ['AI News', 'Gemini Analysis']
             }
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             post_url = post['url']
@@ -100,12 +144,12 @@ def main():
             
             # Send Telegram Alert
             print("✈️ Sending to Telegram...")
-            msg = f"🔥 *New AI Digest Published!*\n\n📅 Date: {date}\n🔗 Read here: {post_url}"
+            msg = f"⚡ *AI Impact Digest | {date}*\n\nRead the latest analysis:\n{post_url}"
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
                           data={"chat_id": CHANNEL_ID, "text": msg, "parse_mode": "Markdown"})
             
         except Exception as e:
-            print(f"❌ Error during publishing: {e}")
+            print(f"❌ Publishing Error: {e}")
     else:
         print("No new news found today.")
 
