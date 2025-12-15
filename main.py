@@ -8,7 +8,7 @@ from google import genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting...")  # Yeh confirm karega ki script run hua ya nahi
+print("DEBUG: Script is starting...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -22,7 +22,7 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- GEMINI ANALYSIS (Clean Output, No Placeholder) ---
+# --- GEMINI ANALYSIS (Model Changed to 1.5 Flash) ---
 def get_analysis(title, link):
     print(f"DEBUG: Attempting to summarize: {title[:30]}...") 
     empty_output = ""
@@ -43,8 +43,9 @@ def get_analysis(title, link):
         Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
         """
         
+        # 👇 CHANGED MODEL TO 1.5-FLASH (Better Limits)
         response = client.models.generate_content(
-            model='gemini-2.0-flash', 
+            model='gemini-1.5-flash', 
             contents=prompt,
             config={"response_mime_type": "application/json"}
         )
@@ -118,7 +119,6 @@ def make_html(news_items):
 def main():
     print("📰 Collecting News...")
     
-    # DEBUG CHECK
     if not BLOG_ID:
         print("⚠️ WARNING: BLOG_ID is missing from secrets!")
     
@@ -138,6 +138,11 @@ def main():
                 if entry.link not in seen:
                     summary, impact = get_analysis(entry.title, entry.link)
                     
+                    # 👇 VALIDATION: Agar Gemini fail hua, toh item list mein mat daalo
+                    if not summary or not impact:
+                        print("⚠️ Skipping item due to failed Gemini generation.")
+                        continue
+
                     items.append({
                         'title': entry.title, 
                         'link': entry.link, 
@@ -145,7 +150,10 @@ def main():
                         'impact': impact
                     })
                     seen.add(entry.link)
-                    time.sleep(1) # Thoda wait taki API spam na ho
+                    
+                    # 👇 DELAY INCREASED: 10 seconds wait to avoid 429 Error
+                    print("⏳ Waiting 10s for API cooldown...")
+                    time.sleep(10)
                     
     except Exception as e:
         print(f"❌ Feed parsing error: {e}")
@@ -176,7 +184,7 @@ def main():
         except Exception as e:
             print(f"❌ Publishing Error: {e}")
     else:
-        print("⚠️ No new news found today or Feed fetch failed.")
+        print("⚠️ No valid generated news found. Post skipped to avoid blank content.")
 
 if __name__ == "__main__":
     main()
