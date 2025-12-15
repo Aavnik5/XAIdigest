@@ -4,7 +4,7 @@ import requests
 import feedparser
 import datetime
 import time
-from google import genai
+import google.generativeai as genai  # 👈 CHANGED LIBRARY
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -22,27 +22,20 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- ULTIMATE MODEL LIST (Newest to Oldest) ---
-# Script upar se neeche try karega. Jo chal gaya, wahi use hoga.
-MODELS_TO_TRY = [
-    "gemini-2.0-flash-exp",   # Latest Experimental (Fastest)
-    "gemini-1.5-flash",       # Stable Fast
-    "gemini-1.5-flash-001",   # Stable Versioned
-    "gemini-1.5-pro",         # High Intelligence
-    "gemini-1.5-pro-001",     # Stable Pro
-    "gemini-1.0-pro",         # Oldest Reliable (Last Resort)
-]
+# --- CONFIGURE GEMINI (STANDARD WAY) ---
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+else:
+    print("❌ Error: GEMINI_API_KEY is missing!")
 
-# --- GEMINI ANALYSIS (With Robust Fallback) ---
+# --- GEMINI ANALYSIS ---
 def get_analysis(title, link):
     print(f"DEBUG: Attempting to summarize: {title[:30]}...") 
     empty_output = ""
     
-    if not GEMINI_KEY:
-        print("❌ Error: GEMINI_API_KEY is missing!")
-        return empty_output, empty_output
-
-    client = genai.Client(api_key=GEMINI_KEY)
+    # Hum sirf ek stable model use karenge jo Free Tier mein best hai
+    # 'gemini-1.5-flash' (Stable, Fast, High Limits)
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""
     Analyze this AI news article title: "{title}"
@@ -53,31 +46,25 @@ def get_analysis(title, link):
     Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
     """
 
-    # LOOP: Saare models try karega jab tak ek pass na ho jaye
-    for model_name in MODELS_TO_TRY:
-        try:
-            # print(f"👉 Trying model: {model_name}...") 
-            response = client.models.generate_content(
-                model=model_name, 
-                contents=prompt,
-                config={"response_mime_type": "application/json"}
-            )
-            
-            data = json.loads(response.text)
-            summary = data.get('summary', empty_output).strip()
-            impact = data.get('impact', empty_output).strip()
-            
-            # Agar data khali nahi hai, toh success maano
-            if summary and impact:
-                print(f"✅ Success with {model_name}")
-                return summary, impact
-            
-        except Exception as e:
-            # Chupchap agla model try karo
-            # print(f"⚠️ Failed with {model_name}: {e}")
-            continue
-
-    print("❌ ALL MODELS FAILED. Skipping this article.")
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
+        data = json.loads(response.text)
+        summary = data.get('summary', empty_output).strip()
+        impact = data.get('impact', empty_output).strip()
+        
+        if summary and impact:
+            print(f"✅ Success with gemini-1.5-flash")
+            return summary, impact
+        
+    except Exception as e:
+        print(f"❌ GEMINI FAILED: {e}")
+        # Agar 429 aaya, toh hum kuch nahi kar sakte, bas skip karenge.
+        # Lekin 1.5-flash par 429 jaldi nahi aata.
+        
     return empty_output, empty_output
 
 # --- GENERATE DESIGN MATCH HTML ---
@@ -155,7 +142,6 @@ def main():
                 
             for entry in feed.entries[:2]:
                 if entry.link not in seen:
-                    # Fallback logic automatically runs inside get_analysis
                     summary, impact = get_analysis(entry.title, entry.link)
                     
                     if not summary or not impact:
@@ -170,7 +156,6 @@ def main():
                     })
                     seen.add(entry.link)
                     
-                    # Safe Delay
                     print("⏳ Waiting 5s...")
                     time.sleep(5)
                     
