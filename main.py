@@ -22,45 +22,61 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- GEMINI ANALYSIS (Model Fixed to Stable Version) ---
+# --- LIST OF FREE MODELS TO TRY (Backup Plan) ---
+MODELS_TO_TRY = [
+    "gemini-1.5-flash-001",  # Best Free & Fast
+    "gemini-1.5-flash",      # Alias
+    "gemini-1.5-pro",        # Powerful
+    "gemini-1.0-pro",        # Old Reliable
+    "gemini-2.0-flash-exp"   # Experimental (Last resort)
+]
+
+# --- GEMINI ANALYSIS (With Fallback Loop) ---
 def get_analysis(title, link):
     print(f"DEBUG: Attempting to summarize: {title[:30]}...") 
     empty_output = ""
     
-    try:
-        if not GEMINI_KEY:
-            print("❌ Error: GEMINI_API_KEY is missing!")
-            return empty_output, empty_output
-
-        client = genai.Client(api_key=GEMINI_KEY)
-        
-        prompt = f"""
-        Analyze this AI news article title: "{title}"
-        Link: {link}
-        
-        Provide the output in JSON format only, with keys "summary" and "impact".
-        Summary: A concise 1-sentence explanation of the news.
-        Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
-        """
-        
-        # 👇 CHANGED MODEL TO 'gemini-1.5-flash-001' (Stable Version ID)
-        # Yeh ID 404 error fix karega
-        response = client.models.generate_content(
-            model='gemini-1.5-flash-001', 
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
-        
-        data = json.loads(response.text)
-        
-        summary = data.get('summary', empty_output).strip()
-        impact = data.get('impact', empty_output).strip()
-        
-        return summary, impact
-        
-    except Exception as e:
-        print(f"❌ GEMINI API FAILED: {e}")
+    if not GEMINI_KEY:
+        print("❌ Error: GEMINI_API_KEY is missing!")
         return empty_output, empty_output
+
+    client = genai.Client(api_key=GEMINI_KEY)
+    
+    prompt = f"""
+    Analyze this AI news article title: "{title}"
+    Link: {link}
+    
+    Provide the output in JSON format only, with keys "summary" and "impact".
+    Summary: A concise 1-sentence explanation of the news.
+    Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
+    """
+
+    # LOOP: Ek fail hua toh agla try karega
+    for model_name in MODELS_TO_TRY:
+        try:
+            # print(f"👉 Trying model: {model_name}...") 
+            response = client.models.generate_content(
+                model=model_name, 
+                contents=prompt,
+                config={"response_mime_type": "application/json"}
+            )
+            
+            data = json.loads(response.text)
+            summary = data.get('summary', empty_output).strip()
+            impact = data.get('impact', empty_output).strip()
+            
+            # Agar success hua, toh yahi return kar do aur loop todo
+            print(f"✅ Success with {model_name}")
+            return summary, impact
+
+        except Exception as e:
+            # Agar error aaya (404, 429, etc), toh agla model try karo
+            print(f"⚠️ Failed with {model_name}: {e}")
+            continue  # Next model try karo
+
+    # Agar saare models fail ho gaye
+    print("❌ ALL MODELS FAILED. Skipping this article.")
+    return empty_output, empty_output
 
 # --- GENERATE DESIGN MATCH HTML ---
 def make_html(news_items):
@@ -137,9 +153,9 @@ def main():
                 
             for entry in feed.entries[:2]:
                 if entry.link not in seen:
+                    # Yahan Fallback function call hoga
                     summary, impact = get_analysis(entry.title, entry.link)
                     
-                    # VALIDATION: Agar Gemini fail hua, toh skip karo
                     if not summary or not impact:
                         print("⚠️ Skipping item due to failed Gemini generation.")
                         continue
@@ -152,7 +168,6 @@ def main():
                     })
                     seen.add(entry.link)
                     
-                    # DELAY: 5 seconds wait (Flash model fast hai, par safe raho)
                     print("⏳ Waiting 5s...")
                     time.sleep(5)
                     
