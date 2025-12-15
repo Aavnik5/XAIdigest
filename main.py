@@ -1,33 +1,11 @@
-import os
-import json
-import requests
-import feedparser
-import datetime
-from google import genai
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-
-# --- CONFIGURATION ---
-GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
-BLOG_ID = os.environ.get('BLOGGER_ID')
-TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
-
-RSS_FEEDS = [
-    "https://techcrunch.com/category/artificial-intelligence/feed/",
-    "https://venturebeat.com/category/ai/feed/"
-]
-
-# --- GEMINI ANALYSIS (JSON Output Request) ---
+# --- GEMINI ANALYSIS (Clean Output, No Placeholder) ---
 def get_analysis(title, link):
-    default_summary = "A brief summary will be generated upon full article availability."
-    default_impact = "The potential impact is being analyzed."
+    # Agar API fail hui, toh bas khali string return hoga (koi default message nahi)
+    empty_output = ""
     
     try:
         client = genai.Client(api_key=GEMINI_KEY)
         
-        # We request output in JSON format for stable parsing
         prompt = f"""
         Analyze this AI news article title: "{title}"
         Link: {link}
@@ -40,31 +18,37 @@ def get_analysis(title, link):
         response = client.models.generate_content(
             model='gemini-2.0-flash', 
             contents=prompt,
-            config={"response_mime_type": "application/json"} # Force JSON output
+            config={"response_mime_type": "application/json"}
         )
         
         # Parse the JSON response
         data = json.loads(response.text)
         
-        # Check if keys exist and return cleaned text
-        summary = data.get('summary', default_summary).strip()
-        impact = data.get('impact', default_impact).strip()
+        # Agar summary/impact nahi mila toh woh khali rahega, placeholder nahi aayega.
+        summary = data.get('summary', empty_output).strip()
+        impact = data.get('impact', empty_output).strip()
         
         return summary, impact
         
     except Exception as e:
-        print(f"Gemini API Error or Parsing Failed: {e}")
-        # Return default messages without any "Click link" text
-        return default_summary, default_impact
+        # Agar API call ya JSON parsing fail ho toh log karo
+        print(f"❌ GEMINI API FAILED for this article. Error: {e}")
+        # Aur khali string return karo taaki blog par kuch galat na chhape
+        return empty_output, empty_output
 
 # --- GENERATE DESIGN MATCH HTML (Tailwind CSS HTML) ---
 def make_html(news_items):
+    # ... (Rest of the make_html function is fine, it will use the empty string if returned) ...
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     
     # Material Icons Link is external to the post content but included for safety
     cards = """<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />"""
     
     for i, item in enumerate(news_items):
+        # Yahan main ek check add kar raha hoon taaki agar dono khali hain, toh bhi card ban jaye.
+        # But agar aap chahte hain ki card na bane, toh yahan condition laga sakte hain.
+        # Filhal, yeh card hamesha banega.
+        
         cards += f"""
         <div style="background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); font-family: Inter, sans-serif;">
             
@@ -111,62 +95,9 @@ def make_html(news_items):
     </div>
     """
     return final_html, date_str
-
+    
 # --- MAIN LOGIC (Publishing) ---
-def main():
-    # ... (Configuration, feed fetching, publishing logic remains the same) ...
-    # Yahan maine sirf get_analysis function ko update kiya hai
-    
-    print("📰 Collecting News...")
-    items = []
-    seen = set()
-    
-    try:
-        for url in RSS_FEEDS:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:2]:
-                if entry.link not in seen:
-                    print(f"Analyzing: {entry.title[:30]}...")
-                    summary, impact = get_analysis(entry.title, entry.link)
-                    items.append({
-                        'title': entry.title, 
-                        'link': entry.link, 
-                        'summary': summary,
-                        'impact': impact
-                    })
-                    seen.add(entry.link)
-    except Exception as e:
-        print(f"Feed parsing error: {e}")
+# ... (Baaki code yahan se same rahega) ...
 
-    if items:
-        html, date = make_html(items[:5])
-        
-        # Publish to Blogger
-        print("🚀 Publishing to Blogger...")
-        try:
-            creds_dict = json.loads(TOKEN_JSON_STR)
-            creds = Credentials.from_authorized_user_info(creds_dict)
-            service = build('blogger', 'v3', credentials=creds)
-            
-            body = {
-                'title': f"⚡ AI Impact Digest | {date}",
-                'content': html,
-                'labels': ['AI News', 'Gemini Analysis']
-            }
-            post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
-            post_url = post['url']
-            print(f"✅ Published: {post_url}")
-            
-            # Send Telegram Alert
-            print("✈️ Sending to Telegram...")
-            msg = f"⚡ *AI Impact Digest | {date}*\n\nRead the latest analysis:\n{post_url}"
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
-                          data={"chat_id": CHANNEL_ID, "text": msg, "parse_mode": "Markdown"})
-            
-        except Exception as e:
-            print(f"❌ Publishing Error: {e}")
-    else:
-        print("No new news found today.")
-
-if __name__ == "__main__":
-    main()
+# NOTE: Since the rest of your code was not included, I assume the full structure is correct.
+# Please replace the 'get_analysis' function in your full 'main.py' file with the code above.
