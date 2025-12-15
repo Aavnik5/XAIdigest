@@ -22,16 +22,18 @@ RSS_FEEDS = [
     "https://venturebeat.com/category/ai/feed/"
 ]
 
-# --- LIST OF FREE MODELS TO TRY (Backup Plan) ---
+# --- ULTIMATE MODEL LIST (Newest to Oldest) ---
+# Script upar se neeche try karega. Jo chal gaya, wahi use hoga.
 MODELS_TO_TRY = [
-    "gemini-1.5-flash-001",  # Best Free & Fast
-    "gemini-1.5-flash",      # Alias
-    "gemini-1.5-pro",        # Powerful
-    "gemini-1.0-pro",        # Old Reliable
-    "gemini-2.0-flash-exp"   # Experimental (Last resort)
+    "gemini-2.0-flash-exp",   # Latest Experimental (Fastest)
+    "gemini-1.5-flash",       # Stable Fast
+    "gemini-1.5-flash-001",   # Stable Versioned
+    "gemini-1.5-pro",         # High Intelligence
+    "gemini-1.5-pro-001",     # Stable Pro
+    "gemini-1.0-pro",         # Oldest Reliable (Last Resort)
 ]
 
-# --- GEMINI ANALYSIS (With Fallback Loop) ---
+# --- GEMINI ANALYSIS (With Robust Fallback) ---
 def get_analysis(title, link):
     print(f"DEBUG: Attempting to summarize: {title[:30]}...") 
     empty_output = ""
@@ -51,7 +53,7 @@ def get_analysis(title, link):
     Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
     """
 
-    # LOOP: Ek fail hua toh agla try karega
+    # LOOP: Saare models try karega jab tak ek pass na ho jaye
     for model_name in MODELS_TO_TRY:
         try:
             # print(f"👉 Trying model: {model_name}...") 
@@ -65,16 +67,16 @@ def get_analysis(title, link):
             summary = data.get('summary', empty_output).strip()
             impact = data.get('impact', empty_output).strip()
             
-            # Agar success hua, toh yahi return kar do aur loop todo
-            print(f"✅ Success with {model_name}")
-            return summary, impact
-
+            # Agar data khali nahi hai, toh success maano
+            if summary and impact:
+                print(f"✅ Success with {model_name}")
+                return summary, impact
+            
         except Exception as e:
-            # Agar error aaya (404, 429, etc), toh agla model try karo
-            print(f"⚠️ Failed with {model_name}: {e}")
-            continue  # Next model try karo
+            # Chupchap agla model try karo
+            # print(f"⚠️ Failed with {model_name}: {e}")
+            continue
 
-    # Agar saare models fail ho gaye
     print("❌ ALL MODELS FAILED. Skipping this article.")
     return empty_output, empty_output
 
@@ -153,7 +155,7 @@ def main():
                 
             for entry in feed.entries[:2]:
                 if entry.link not in seen:
-                    # Yahan Fallback function call hoga
+                    # Fallback logic automatically runs inside get_analysis
                     summary, impact = get_analysis(entry.title, entry.link)
                     
                     if not summary or not impact:
@@ -168,6 +170,7 @@ def main():
                     })
                     seen.add(entry.link)
                     
+                    # Safe Delay
                     print("⏳ Waiting 5s...")
                     time.sleep(5)
                     
