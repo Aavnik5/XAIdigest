@@ -210,10 +210,10 @@ def main():
                 # Clean Markdown characters that might break Telegram
                 clean_title = item['title'].replace("*", "").replace("_", "").replace("[", "").replace("]", "")
                 
-                telegram_msg += f"🔹 *{i+1}. {clean_title}*\n<br>"
-                telegram_msg += f"📝 {item['summary']}\n<br>"
-                telegram_msg += f"🚀 Impact: {item['impact']}\n<br>"
-                telegram_msg += f"🔗 [Read Source]({item['link']})\n\n"
+                telegram_msg += f"🔹 *{i+1}. {clean_title}*\n\n"
+                telegram_msg += f"📝 {item['summary']}\n\n"
+                telegram_msg += f"🚀 Impact: {item['impact']}\n\n"
+                telegram_msg += f"🔗 [Read Source]({item['link']})\n\n\n"
 
             telegram_msg += f"-----------------\n📖 *Full Digest on Blog:* {post['url']}"
             
@@ -231,4 +231,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
