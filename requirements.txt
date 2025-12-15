@@ -1,6 +1,6 @@
 requests
 feedparser
-google-genai
+google-generativeai
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
