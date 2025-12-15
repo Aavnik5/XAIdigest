@@ -3,11 +3,12 @@ name: Daily AI Digest
 on:
   schedule:
     # -------------------------------------------------------
-    # 👇 YAHAN CHANGE KIYA HAI (Har 2 ghante par chalega)
-    # Cron format: 'Minute Hour Day Month Weekday'
-    # '0 */2 * * *' ka matlab: 12:00, 2:00, 4:00, 6:00... etc.
+    # 👇 UPDATED TIME (IST ke hisaab se 8 AM aur 7 PM)
+    # GitHub UTC use karta hai.
+    # 2:30 UTC = 8:00 AM IST
+    # 13:30 UTC = 7:00 PM IST
     # -------------------------------------------------------
-    - cron: '0 */2 * * *' 
+    - cron: '30 2,13 * * *'
   
   workflow_dispatch:      # Manual Test Button
 
