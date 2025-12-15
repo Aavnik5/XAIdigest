@@ -1,0 +1,35 @@
+name: Daily AI Digest
+
+on:
+  schedule:
+    # -------------------------------------------------------
+    # 👇 YAHAN CHANGE KIYA HAI (Har 2 ghante par chalega)
+    # Cron format: 'Minute Hour Day Month Weekday'
+    # '0 */2 * * *' ka matlab: 12:00, 2:00, 4:00, 6:00... etc.
+    # -------------------------------------------------------
+    - cron: '0 */2 * * *' 
+  
+  workflow_dispatch:      # Manual Test Button
+
+jobs:
+  run-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: Install Libraries
+        run: pip install -r requirements.txt
+        
+      - name: Run Bot
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+          BLOGGER_ID: ${{ secrets.BLOGGER_ID }}
+          BLOGGER_TOKEN_JSON: ${{ secrets.BLOGGER_TOKEN_JSON }}
+        run: python main.py
