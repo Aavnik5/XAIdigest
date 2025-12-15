@@ -18,7 +18,7 @@ CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 
-# 👇 YAHAN HAI AAPKI UPDATED LIST (30 WEBSITES)
+# --- 30+ WEBSITES LIST ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -105,7 +105,7 @@ def get_analysis(title, link, description=""):
     
     return fallback_summary, fallback_impact
 
-# --- GENERATE HTML ---
+# --- GENERATE HTML FOR BLOGGER ---
 def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     cards = """<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />"""
@@ -164,7 +164,7 @@ def main():
                 feed = feedparser.parse(url)
                 if not feed.entries: continue
                 
-                # 👇 YAHAN CHANGE KIYA HAI: [:1] matlab har site se bas 1 news
+                # Limit 1 news per site
                 for entry in feed.entries[:1]:
                     if entry.link not in seen:
                         desc = entry.get('summary', '') or entry.get('description', '')
@@ -173,15 +173,15 @@ def main():
                         items.append({'title': entry.title, 'link': entry.link, 'summary': summary, 'impact': impact})
                         seen.add(entry.link)
                         
-                        # Stop if we already have 10 top news (Quota Bachao)
+                        # Stop at 10 items max (for Telegram limit safety)
                         if len(items) >= 10:
-                            print("✅ Collected 10 top news items. Stopping to save quota.")
+                            print("✅ Collected 10 top news items. Stopping.")
                             break
                         
                         print("⏳ Waiting 3s...")
                         time.sleep(3)
                         
-                if len(items) >= 10: break # Break outer loop too
+                if len(items) >= 10: break
                 
             except Exception as e:
                 print(f"⚠️ Feed error: {e}")
@@ -190,7 +190,7 @@ def main():
         print(f"❌ Global Error: {e}")
 
     if items:
-        # Show all collected items (up to 10)
+        # 1. Blogger Post
         html, date = make_html(items)
         print("🚀 Publishing to Blogger...")
         try:
@@ -200,9 +200,30 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Published: {post['url']}")
             
-            print("✈️ Sending Telegram...")
-            msg = f"⚡ *AI Impact Digest | {date}*\n\nRead here:\n{post['url']}"
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id": CHANNEL_ID, "text": msg, "parse_mode": "Markdown"})
+            # 2. Telegram Detailed Message
+            print("✈️ Sending Detailed Update to Telegram...")
+            
+            # Create a long message string
+            telegram_msg = f"⚡ *AI Impact Digest | {date}*\n\n"
+            
+            for i, item in enumerate(items):
+                # Clean Markdown characters that might break Telegram
+                clean_title = item['title'].replace("*", "").replace("_", "").replace("[", "").replace("]", "")
+                
+                telegram_msg += f"🔹 *{i+1}. {clean_title}*\n"
+                telegram_msg += f"📝 {item['summary']}\n"
+                telegram_msg += f"🚀 Impact: {item['impact']}\n"
+                telegram_msg += f"🔗 [Read Source]({item['link']})\n\n"
+
+            telegram_msg += f"-----------------\n📖 *Full Digest on Blog:* {post['url']}"
+            
+            # Safety Check: Telegram limit is 4096 chars
+            if len(telegram_msg) > 4000:
+                telegram_msg = telegram_msg[:4000] + "\n\n...(Full list on Blog)"
+
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
+                          data={"chat_id": CHANNEL_ID, "text": telegram_msg, "parse_mode": "Markdown"})
+            
         except Exception as e:
             print(f"❌ Publishing Error: {e}")
     else:
