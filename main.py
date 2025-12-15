@@ -4,6 +4,7 @@ import requests
 import feedparser
 import datetime
 import time
+import re
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -25,67 +26,66 @@ RSS_FEEDS = [
 # --- SETUP GEMINI ---
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
-else:
-    print("❌ Error: GEMINI_API_KEY is missing!")
 
-# --- SMART ANALYSIS FUNCTION ---
-def get_analysis(title, link):
-    print(f"DEBUG: Summarizing: {title[:30]}...") 
-    empty_output = ""
-    
-    # 1. Available Models List karo (Debugging ke liye)
-    # Taaki humein pata chale ki GitHub server par kaunse model allowed hain
+# --- DYNAMIC MODEL FINDER ---
+def get_best_model():
+    """Google se jo model available hai wo utha lo, hardcode mat karo"""
     try:
-        if not hasattr(get_analysis, "models_logged"):
-            print("🔍 Checking available Gemini models...")
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    print(f"   - Found: {m.name}")
-            get_analysis.models_logged = True
-    except:
-        pass
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                # Prefer 'pro' or 'flash' models if available
+                if 'gemini' in m.name:
+                    print(f"✅ Auto-Selected Model: {m.name}")
+                    return m.name
+    except Exception as e:
+        print(f"⚠️ Error listing models: {e}")
+    return "models/gemini-1.5-flash" # Default fallback
 
-    # 2. Priority List: Script inko line se try karega
-    priority_models = [
-        'gemini-1.5-flash',
-        'gemini-1.5-flash-latest',
-        'gemini-1.0-pro',
-        'gemini-pro'  # Sabse purana aur stable fallback
-    ]
-
-    prompt = f"""
-    Analyze this AI news article title: "{title}"
-    Link: {link}
+# --- SUMMARY GENERATOR ---
+def get_analysis(title, link, description=""):
+    print(f"DEBUG: Summarizing: {title[:30]}...") 
     
-    Provide the output in JSON format only, with keys "summary" and "impact".
-    Summary: A concise 1-sentence explanation of the news.
-    Impact: A concise 1-sentence explanation of why this news is significant globally/industry-wide.
-    """
-
-    for model_name in priority_models:
-        try:
-            # print(f"👉 Trying: {model_name}...")
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
-            )
+    # 1. Try AI Generation
+    try:
+        model_name = get_best_model()
+        model = genai.GenerativeModel(model_name)
+        
+        # Simple Prompt (No strict JSON to avoid errors on experimental models)
+        prompt = f"""
+        Read this news title: "{title}"
+        Link: {link}
+        
+        Write a summary and impact statement.
+        Format exactly like this:
+        Summary: [One sentence summary]
+        Impact: [One sentence impact]
+        """
+        
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        # Parse text manually
+        summary = ""
+        impact = ""
+        
+        if "Summary:" in text and "Impact:" in text:
+            parts = text.split("Impact:")
+            summary = parts[0].replace("Summary:", "").strip()
+            impact = parts[1].strip()
+            return summary, impact
             
-            data = json.loads(response.text)
-            summary = data.get('summary', empty_output).strip()
-            impact = data.get('impact', empty_output).strip()
-            
-            if summary and impact:
-                print(f"✅ Success using: {model_name}")
-                return summary, impact
-                
-        except Exception as e:
-            # Agar error 404 ya 429 hai, toh agla model try karo
-            # print(f"⚠️ {model_name} failed: {e}")
-            continue
+    except Exception as e:
+        print(f"❌ AI Failed ({e}). Switching to Manual Fallback.")
 
-    print("❌ All Gemini models failed. Skipping item.")
-    return empty_output, empty_output
+    # 2. Manual Fallback (Agar AI fail hua to ye chalega - Post Khali Nahi Hoga)
+    print("⚠️ Using Manual Fallback for content.")
+    
+    # Use feed description or title as summary
+    clean_desc = re.sub('<[^<]+?>', '', description) # Remove HTML tags
+    fallback_summary = clean_desc[:150] + "..." if len(clean_desc) > 5 else f"{title} - Click to read full details."
+    fallback_impact = "Check the full article to understand the industry impact."
+    
+    return fallback_summary, fallback_impact
 
 # --- GENERATE HTML ---
 def make_html(news_items):
@@ -101,7 +101,7 @@ def make_html(news_items):
             <div style="background: #fcfcfc; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #f0f0f0;">
                 <div style="display: flex; align-items: center; margin-bottom: 8px;">
                     <span class="material-symbols-outlined" style="color: #ef4444; font-size: 20px; margin-right: 8px;">psychology</span>
-                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">GEMINI SUMMARY</strong>
+                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">SUMMARY</strong>
                 </div>
                 <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">{item['summary']}</p>
             </div>
@@ -146,16 +146,14 @@ def main():
                 
             for entry in feed.entries[:2]:
                 if entry.link not in seen:
-                    summary, impact = get_analysis(entry.title, entry.link)
+                    # Pass description for fallback usage
+                    desc = entry.get('summary', '') or entry.get('description', '')
+                    summary, impact = get_analysis(entry.title, entry.link, desc)
                     
-                    if not summary or not impact:
-                        print("⚠️ Skipping item (Gemini Failed).")
-                        continue
-
                     items.append({'title': entry.title, 'link': entry.link, 'summary': summary, 'impact': impact})
                     seen.add(entry.link)
-                    print("⏳ Waiting 5s...")
-                    time.sleep(5)
+                    print("⏳ Waiting 3s...")
+                    time.sleep(3)
     except Exception as e:
         print(f"❌ Error: {e}")
 
@@ -179,4 +177,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
