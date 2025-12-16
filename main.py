@@ -5,7 +5,7 @@ import feedparser
 import datetime
 import time
 import re
-import random  # Added for random selection
+import random
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -66,7 +66,7 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- SUMMARY GENERATOR (UPDATED FOR SHORT OUTPUT) ---
+# --- SUMMARY GENERATOR (UPDATED FOR 5-5 LINES) ---
 def get_analysis(title, link, description=""):
     print(f"DEBUG: Summarizing: {title[:30]}...") 
     
@@ -74,16 +74,19 @@ def get_analysis(title, link, description=""):
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # Updated Prompt for strict 5-line limit
+        # Updated Prompt: Asking for 5 lines each
         prompt = f"""
         Read this news title: "{title}"
         Link: {link}
         
-        Write a very short analysis.
-        Total length must be under 5 lines.
+        Write a structured analysis.
+        
+        1. Summary: Write exactly 5 sentences summarizing the key events.
+        2. Impact: Write exactly 5 sentences explaining the future impact on the industry.
+        
         Format exactly like this:
-        Summary: [2 sentences max describing what happened]
-        Impact: [1 sentence describing why it matters]
+        Summary: [5 sentences content]
+        Impact: [5 sentences content]
         """
         
         response = model.generate_content(prompt)
@@ -103,7 +106,7 @@ def get_analysis(title, link, description=""):
 
     print("⚠️ Using Manual Fallback for content.")
     clean_desc = re.sub('<[^<]+?>', '', description)
-    fallback_summary = clean_desc[:100] + "..." 
+    fallback_summary = clean_desc[:250] + "..." 
     fallback_impact = "Check the full article for details."
     
     return fallback_summary, fallback_impact
@@ -112,20 +115,23 @@ def get_analysis(title, link, description=""):
 def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     
-    # Simple clean HTML for single post
     item = news_items[0]
     final_html = f"""
     <div style="font-family: Inter, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
             <h2 style="color: #111; margin-top: 0;">{item['title']}</h2>
             
-            <p style="color: #444; font-size: 16px; line-height: 1.6;">
-                <strong>Summary:</strong> {item['summary']}
-            </p>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #ef4444; font-size: 16px; margin-bottom: 8px;">📌 Summary</h3>
+                <p style="color: #444; font-size: 16px; line-height: 1.8; margin-top: 0;">
+                    {item['summary']}
+                </p>
+            </div>
             
-            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 10px 15px; margin: 15px 0;">
-                <p style="margin: 0; color: #1e3a8a; font-weight: 500;">
-                    <strong>Impact:</strong> {item['impact']}
+            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 15px 0;">
+                <h3 style="color: #1e3a8a; font-size: 16px; margin-bottom: 8px; margin-top: 0;">🚀 Impact</h3>
+                <p style="margin: 0; color: #1e40af; line-height: 1.8;">
+                    {item['impact']}
                 </p>
             </div>
             
@@ -188,11 +194,11 @@ def main():
         try:
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
-            body = {'title': f"AI Alert: {items[0]['title']}", 'content': html, 'labels': ['AI News', 'Trending']}
+            body = {'title': f"AI Update: {items[0]['title']}", 'content': html, 'labels': ['AI News', 'Trending']}
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Published: {post['url']}")
             
-            # 2. Telegram Message (Short & Crisp)
+            # 2. Telegram Message (Detailed 5-5 Lines)
             print("✈️ Sending Update to Telegram...")
             
             item = items[0]
@@ -200,8 +206,8 @@ def main():
             
             telegram_msg = f"⚡ *AI Trending Update*\n\n"
             telegram_msg += f"📰 *{clean_title}*\n\n"
-            telegram_msg += f"📝 *Summary:* {item['summary']}\n\n"
-            telegram_msg += f"🚀 *Impact:* {item['impact']}\n\n"
+            telegram_msg += f"📌 *Summary:*\n{item['summary']}\n\n"
+            telegram_msg += f"🚀 *Impact:*\n{item['impact']}\n\n"
             telegram_msg += f"🔗 [Read More]({item['link']})"
             
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
