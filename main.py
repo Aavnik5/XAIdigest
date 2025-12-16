@@ -145,86 +145,117 @@ def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
     
-    # Text cleaning
+    # Points ko list mein convert karna (Empty strings hata kar)
     summary_points = [p.strip("12345. -") for p in item['summary'].strip().split('\n') if p.strip()]
     impact_points = [p.strip("12345. -") for p in item['impact'].strip().split('\n') if p.strip()]
 
-    # CSS Block
+    # CSS ko hum ek variable mein rakhenge taaki code clean rahe
+    # Note: Blogger ke liye hum inline styles + internal CSS combine kar rahe hain
     css_block = """
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap');
-        
-        .ai-card-container { font-family: 'Inter', sans-serif; max-width: 700px; width: 100%; margin: 0 auto; padding: 10px; box-sizing: border-box; }
-        .ai-card { background: #ffffff; border: 1px solid #f3f4f6; border-radius: 20px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden; }
-        .top-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: linear-gradient(90deg, #FF385C, #9333ea); }
-        
-        .section-box { border-radius: 16px; padding: 18px; margin-bottom: 20px; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        .ai-card-container {
+            font-family: 'Inter', sans-serif;
+            max-width: 700px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .ai-card {
+            background: #ffffff;
+            border: 1px solid #f3f4f6;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .ai-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            border-color: #FF385C;
+        }
+        .ai-card:hover .top-gradient {
+            opacity: 1;
+        }
+        .top-gradient {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #FF385C, #9333ea);
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+        .section-box {
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+        .section-box:hover {
+            transform: scale(1.01);
+        }
         .summary-box { background: #fff1f2; border: 1px solid #ffe4e6; }
         .impact-box { background: #eff6ff; border: 1px solid #dbeafe; }
         
-        .list-item { display: flex; align-items: flex-start; margin-bottom: 10px; font-size: 15px; line-height: 1.6; color: #374151; }
-        .number-badge { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; margin-right: 10px; margin-top: 3px; }
+        .list-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #374151;
+        }
+        .list-item:last-child { margin-bottom: 0; }
+        
+        .number-badge {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 12px;
+            margin-top: 2px;
+        }
         .sum-badge { background: #FF385C; color: white; }
         .imp-badge { background: #3b82f6; color: white; }
         
-        .read-btn { display: block; background: #111827; color: white !important; text-decoration: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; margin-bottom: 20px; transition: transform 0.2s; }
-        .read-btn:hover { transform: translateY(-2px); }
-
-        /* --- STATS BAR CSS --- */
-        .stats-bar {
-            display: flex;
-            justify-content: space-between;
+        .read-btn {
+            display: inline-flex;
             align-items: center;
-            border-top: 1px solid #f3f4f6;
-            padding-top: 15px;
-            margin-top: 10px;
-        }
-        
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 16px;
+            justify-content: center;
+            background: #111827;
+            color: white !important;
+            text-decoration: none;
+            padding: 12px 24px;
             border-radius: 50px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            width: auto;
+        }
+        .read-btn:hover {
+            background: #FF385C;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 56, 92, 0.3);
         }
 
-        .views-badge {
-            background: #f9fafb;
-            color: #6b7280;
-            border: 1px solid #f3f4f6;
+        /* Mobile Adjustments */
+        @media (max-width: 600px) {
+            .ai-card { padding: 20px 15px; }
+            h1 { font-size: 20px !important; }
+            .section-box { padding: 15px; }
+            .read-btn { width: 100%; }
         }
-
-        .share-btn { 
-            background: #f0fdf4; 
-            color: #16a34a; 
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        .share-btn:hover { background: #dcfce7; transform: scale(1.05); }
-        
-        .icon { font-size: 18px; font-family: 'Material Symbols Rounded'; }
     </style>
-    """
-
-    # Script Block: Updated to share Current Page URL
-    script_block = f"""
-    <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
-    <script>
-        function sharePost() {{
-            // CHANGE: Ab ye 'window.location.href' use karega (Aapke Blog ka Link)
-            const url = window.location.href; 
-            const text = 'Read this AI News Update: {item['title']}';
-            
-            if (navigator.share) {{
-                navigator.share({{ title: '{item['title']}', text: text, url: url }});
-            }} else {{
-                window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url));
-            }}
-        }}
-    </script>
     """
 
     final_html = f"""
@@ -233,47 +264,56 @@ def make_html(news_items):
         <div class="ai-card">
             <div class="top-gradient"></div>
             
-            <div style="margin-bottom: 20px;">
-                <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
+            <div style="margin-bottom: 25px;">
+                <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
                     {date_str}
                 </span>
-                <h1 style="color: #111827; font-size: 22px; font-weight: 800; margin-top: 12px; line-height: 1.3;">
+                <h1 style="color: #111827; font-size: 24px; font-weight: 800; margin-top: 15px; line-height: 1.3;">
                     {item['title']}
                 </h1>
             </div>
 
-            <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; margin-bottom: 10px; color: #FF385C;">
+                    <span style="font-size: 20px; margin-right: 8px;">🧠</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">AI Summary</strong>
+                </div>
                 <div class="section-box summary-box">
-                    {''.join([f'<div class="list-item"><span class="number-badge sum-badge">{i+1}</span><span>{p}</span></div>' for i, p in enumerate(summary_points[:5])])}
+                    {''.join([f'''
+                    <div class="list-item">
+                        <span class="number-badge sum-badge">{i+1}</span>
+                        <span>{p}</span>
+                    </div>
+                    ''' for i, p in enumerate(summary_points[:5])])}
                 </div>
             </div>
 
-            <div style="margin-bottom: 20px;">
+            <div style="margin-bottom: 30px;">
+                <div style="display: flex; align-items: center; margin-bottom: 10px; color: #3b82f6;">
+                    <span style="font-size: 20px; margin-right: 8px;">⚡</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Future Impact</strong>
+                </div>
                 <div class="section-box impact-box">
-                    {''.join([f'<div class="list-item"><span class="number-badge imp-badge">{i+1}</span><span>{p}</span></div>' for i, p in enumerate(impact_points[:5])])}
+                    {''.join([f'''
+                    <div class="list-item">
+                        <span class="number-badge imp-badge">{i+1}</span>
+                        <span>{p}</span>
+                    </div>
+                    ''' for i, p in enumerate(impact_points[:5])])}
                 </div>
             </div>
 
-            <a href="{item['link']}" class="read-btn" target="_blank">Read Full Article Source</a>
-
-            <div class="stats-bar">
-                
-                <div class="stat-item views-badge" title="Real User Views">
-                    <span class="icon">visibility</span>
-                    <span id="busuanzi_container_page_pv" style="display: inline;">
-                        <span id="busuanzi_value_page_pv">--</span>
-                    </span>
-                </div>
-
-                <button class="stat-item share-btn" onclick="sharePost()">
-                    <span class="icon">share</span>
-                    <span>Share App</span>
-                </button>
-
+            <div style="text-align: center;">
+                <a href="{item['link']}" class="read-btn">
+                    Read Full Story
+                    <span style="margin-left: 8px;">→</span>
+                </a>
+                <p style="margin-top: 15px; color: #9ca3af; font-size: 11px;">
+                    Generated by AI • Source: {item.get('source', 'Web')}
+                </p>
             </div>
         </div>
     </div>
-    {script_block}
     """
     return final_html, date_str
     
