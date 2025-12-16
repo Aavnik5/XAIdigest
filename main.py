@@ -10,35 +10,15 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (Aggressive Token Cleaner Mode)...")
+print("DEBUG: Script is starting (5-Line Detailed Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
+BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
-CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 HISTORY_FILE = 'posted_history.json' 
-
-# --- AGGRESSIVE TOKEN CLEANER (FIX FOR YOUR ERROR) ---
-RAW_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-
-# 1. Sabse pehle brackets aur markdown hatate hain
-clean_token = str(RAW_TOKEN).strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
-
-# 2. Agar user ne galti se pura URL paste kiya hai, toh usme se sirf Token nikalte hain
-if "api.telegram.org" in clean_token:
-    # URL me se last part nikalne ki koshish (formatted like .../botTOKEN/...)
-    parts = clean_token.split('/bot')
-    if len(parts) > 1:
-        clean_token = parts[1].split('/')[0] # Sirf token lega
-
-# 3. Agar 'bot' prefix abhi bhi hai, toh hata do
-if clean_token.lower().startswith('bot'):
-    clean_token = clean_token[3:]
-
-# 4. Final Token Check
-BOT_TOKEN = clean_token.strip()
-print(f"DEBUG: Processed Bot Token: {BOT_TOKEN[:5]}...*****") # Print first 5 chars for check
 
 # --- WEBSITE LIST ---
 RSS_FEEDS = [
@@ -104,7 +84,7 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- ANALYSIS FUNCTION (5 LINES) ---
+# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     
@@ -112,6 +92,7 @@ def get_analysis_json(title, link, description=""):
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
+        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
         You are an expert Tech Journalist.
         News Title: "{title}"
@@ -187,9 +168,9 @@ def main():
     if not BLOG_ID: 
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
-    
+
     history = load_history()
-    random.shuffle(RSS_FEEDS) 
+    random.shuffle(RSS_FEEDS) # Shuffle websites
     
     final_post = None
     
@@ -200,10 +181,12 @@ def main():
             feed = feedparser.parse(url)
             if not feed.entries: continue
             
+            # Check top 3 entries of this random feed
             for entry in feed.entries[:3]:
                 if entry.link not in history:
                     print(f"✅ Found New Topic: {entry.title}")
                     
+                    # Generate Summary/Impact only
                     desc = entry.get('summary', '') or entry.get('description', '')
                     analysis = get_analysis_json(entry.title, entry.link, desc)
                     
@@ -216,7 +199,7 @@ def main():
                         }
                         break
             
-            if final_post: break 
+            if final_post: break # Found our single post, stop searching
                 
         except Exception as e:
             print(f"⚠️ Feed error: {e}")
@@ -230,8 +213,10 @@ def main():
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
             
+            # 1. Make HTML Card
             html_content = create_single_card_html(final_post)
             
+            # 2. Publish to Blogger
             body = {
                 'title': f"⚡ {final_post['title']}", 
                 'content': html_content, 
@@ -240,35 +225,34 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # --- SAFE TELEGRAM URL CONSTRUCTION ---
-            print("✈️ Sending to Telegram...")
-            
+            # 3. Send Telegram Msg (FIXED URL)
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
             tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
             tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
             tg_msg += f"🔗 [Read More]({post['url']})"
             
+            # Telegram 4096 char limit safety
             if len(tg_msg) > 4000:
                  tg_msg = tg_msg[:4000] + "..."
 
-            # Yahan hum manually URL bana rahe hain taaki brackets na aayein
-            telegram_api_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
-            
-            # Debugging print to see if URL looks clean (Tokens masked)
-            print(f"DEBUG: URL Check -> .../bot{BOT_TOKEN[:3]}*****/sendMessage")
+            # 👇 FIXED REQUEST - Removed Markdown Brackets from URL
+            telegram_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
             
             response = requests.post(
-                telegram_api_url, 
+                telegram_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
             )
             
+            # Check if sent successfully
             if response.status_code == 200:
-                print("✅ Telegram Sent Successfully.")
-                save_history(final_post['link'])
+                print("✅ Telegram Sent.")
             else:
                 print(f"❌ Telegram Error: {response.text}")
             
+            # 4. Save History
+            save_history(final_post['link'])
+
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
