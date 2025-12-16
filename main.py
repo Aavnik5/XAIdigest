@@ -10,15 +10,19 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (5-Line Detailed Mode)...")
+print("DEBUG: Script is starting (Fixed Telegram Connection)...")
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION & CLEANUP ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
+CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 HISTORY_FILE = 'posted_history.json' 
+
+# Telegram Token Cleanup (Fixing the error source)
+RAW_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+# Remove spaces and 'bot' prefix if user accidentally added it in environment variable
+BOT_TOKEN = str(RAW_BOT_TOKEN).strip().replace('bot', '', 1) if RAW_BOT_TOKEN.lower().startswith('bot') else str(RAW_BOT_TOKEN).strip()
 
 # --- WEBSITE LIST ---
 RSS_FEEDS = [
@@ -84,7 +88,7 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
+# --- ANALYSIS FUNCTION (5 LINES) ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     
@@ -92,7 +96,6 @@ def get_analysis_json(title, link, description=""):
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
         You are an expert Tech Journalist.
         News Title: "{title}"
@@ -168,9 +171,13 @@ def main():
     if not BLOG_ID: 
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
+    
+    # Check Token before proceeding
+    if not BOT_TOKEN:
+        print("⚠️ WARNING: TELEGRAM_BOT_TOKEN is missing or empty!")
 
     history = load_history()
-    random.shuffle(RSS_FEEDS) # Shuffle websites
+    random.shuffle(RSS_FEEDS) 
     
     final_post = None
     
@@ -181,12 +188,10 @@ def main():
             feed = feedparser.parse(url)
             if not feed.entries: continue
             
-            # Check top 3 entries of this random feed
             for entry in feed.entries[:3]:
                 if entry.link not in history:
                     print(f"✅ Found New Topic: {entry.title}")
                     
-                    # Generate Summary/Impact only
                     desc = entry.get('summary', '') or entry.get('description', '')
                     analysis = get_analysis_json(entry.title, entry.link, desc)
                     
@@ -199,7 +204,7 @@ def main():
                         }
                         break
             
-            if final_post: break # Found our single post, stop searching
+            if final_post: break 
                 
         except Exception as e:
             print(f"⚠️ Feed error: {e}")
@@ -213,10 +218,8 @@ def main():
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
             
-            # 1. Make HTML Card
             html_content = create_single_card_html(final_post)
             
-            # 2. Publish to Blogger
             body = {
                 'title': f"⚡ {final_post['title']}", 
                 'content': html_content, 
@@ -225,24 +228,32 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # 3. Send Telegram Msg
+            # --- FIXED TELEGRAM SECTION ---
+            print("✈️ Sending to Telegram...")
+            
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
             tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
             tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
             tg_msg += f"🔗 [Read More]({post['url']})"
             
-            # Telegram 4096 char limit safety
             if len(tg_msg) > 4000:
                  tg_msg = tg_msg[:4000] + "..."
 
-            requests.post(
-                f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage", 
+            # Clean URL construction
+            telegram_api_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
+            
+            # Request sending
+            response = requests.post(
+                telegram_api_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
             )
-            print("✅ Telegram Sent.")
             
-            # 4. Save History
+            if response.status_code == 200:
+                print("✅ Telegram Sent Successfully.")
+            else:
+                print(f"❌ Telegram Error: {response.text}")
+            
             save_history(final_post['link'])
 
         except Exception as e:
