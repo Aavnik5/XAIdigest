@@ -2,13 +2,14 @@ import os
 import json
 import requests
 import feedparser
+import datetime
 import time
-import random
+import re
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (No History Mode)...")
+print("DEBUG: Script is starting...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -17,7 +18,7 @@ CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 
-# --- WEBSITE LIST ---
+# --- 30+ WEBSITES LIST ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -49,10 +50,11 @@ RSS_FEEDS = [
     "https://searchengineland.com/library/platforms/google/google-bard/feed",
 ]
 
-# --- GEMINI SETUP ---
+# --- SETUP GEMINI ---
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
+# --- DYNAMIC MODEL FINDER ---
 def get_best_model():
     try:
         for m in genai.list_models():
@@ -63,168 +65,169 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- ANALYSIS FUNCTION ---
-def get_analysis_json(title, link, description=""):
-    print(f"DEBUG: Analyzing: {title[:30]}...") 
+# --- SUMMARY GENERATOR ---
+def get_analysis(title, link, description=""):
+    print(f"DEBUG: Summarizing: {title[:30]}...") 
     
     try:
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
         prompt = f"""
-        You are an expert Tech Journalist.
-        News Title: "{title}"
-        Context: {description}
+        Read this news title: "{title}"
+        Link: {link}
         
-        Task: Write a Detailed Summary (approx 5 lines) and a Detailed Impact Analysis (approx 5 lines).
-        
-        Return strictly valid JSON:
-        {{
-            "summary": "Write a 5-line detailed paragraph explaining exactly what happened, which companies/models are involved, and the key features released. Do not be vague.",
-            "impact": "Write a 5-line detailed paragraph explaining the long-term consequences, how this changes the AI industry, and who benefits the most from this.",
-        }}
+        Write a summary and impact statement.
+        Format exactly like this:
+        Summary: [One sentence summary]
+        Impact: [One sentence impact]
         """
         
         response = model.generate_content(prompt)
         text = response.text.strip()
-        if text.startswith("```json"):
-            text = text.replace("```json", "").replace("```", "")
         
-        return json.loads(text)
+        summary = ""
+        impact = ""
+        
+        if "Summary:" in text and "Impact:" in text:
+            parts = text.split("Impact:")
+            summary = parts[0].replace("Summary:", "").strip()
+            impact = parts[1].strip()
+            return summary, impact
             
     except Exception as e:
-        print(f"❌ AI Failed ({e}).")
-        return None
+        print(f"❌ AI Failed ({e}). Switching to Manual Fallback.")
 
-# --- HTML CARD GENERATOR ---
-def create_single_card_html(item):
-    return f"""
-    <link rel="stylesheet" href="[https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0](https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0)" />
-    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto;">
-        
-        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 30px; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);">
-            
-            <h2 style="font-size: 24px; font-weight: 800; color: #111; margin-bottom: 25px; line-height: 1.3;">
-                {item['title']}
-            </h2>
+    print("⚠️ Using Manual Fallback for content.")
+    clean_desc = re.sub('<[^<]+?>', '', description)
+    fallback_summary = clean_desc[:150] + "..." if len(clean_desc) > 5 else f"{title} - Click to read details."
+    fallback_impact = "Check the full article to understand the industry impact."
+    
+    return fallback_summary, fallback_impact
 
-            <div style="background: #f9fafb; border-left: 4px solid #ef4444; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                    <span class="material-symbols-outlined" style="color: #ef4444; margin-right: 8px;">psychology</span>
-                    <strong style="color: #374151; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;">Detailed Summary</strong>
+# --- GENERATE HTML FOR BLOGGER ---
+def make_html(news_items):
+    date_str = datetime.datetime.now().strftime("%d %B %Y")
+    cards = """<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />"""
+    
+    for i, item in enumerate(news_items):
+        cards += f"""
+        <div style="background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 10px rgba(0,0,0,0.03); font-family: Inter, sans-serif;">
+            <h3 style="font-size: 20px; font-weight: 700; color: #1a1a1a; margin-bottom: 20px; line-height: 1.4;">
+                {i+1}. {item['title']}
+            </h3>
+            <div style="background: #fcfcfc; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <span class="material-symbols-outlined" style="color: #ef4444; font-size: 20px; margin-right: 8px;">psychology</span>
+                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">SUMMARY</strong>
                 </div>
-                <p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.7; text-align: justify;">
-                    {item['summary']}
-                </p>
+                <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">{item['summary']}</p>
             </div>
-
-            <div style="background: #f9fafb; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                    <span class="material-symbols-outlined" style="color: #3b82f6; margin-right: 8px;">bolt</span>
-                    <strong style="color: #374151; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;">Industry Impact</strong>
+            <div style="background: #fcfcfc; border-radius: 12px; padding: 16px; border: 1px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px;">
+                    <span class="material-symbols-outlined" style="color: #3b82f6; font-size: 20px; margin-right: 8px;">bolt</span>
+                    <strong style="color: #1a1a1a; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase;">IMPACT</strong>
                 </div>
-                <p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.7; text-align: justify;">
-                    {item['impact']}
-                </p>
+                <p style="color: #4b5563; font-size: 15px; margin: 0; line-height: 1.6;">{item['impact']}</p>
             </div>
-
-            <div style="text-align: center;">
-                <a href="{item['link']}" target="_blank" style="background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 50px; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; transition: transform 0.2s;">
-                    Read Original Source
-                    <span class="material-symbols-outlined" style="font-size: 18px; margin-left: 8px;">open_in_new</span>
+            <div style="margin-top: 20px; text-align: right;">
+                <a href="{item['link']}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center;">
+                    Read Full Story <span class="material-symbols-outlined" style="font-size: 18px; margin-left: 4px;">arrow_forward</span>
                 </a>
             </div>
-
         </div>
+        """
+        
+    final_html = f"""
+    <div style="padding-top: 20px;">
+        <div style="display: flex; align-items: center; margin-bottom: 30px;">
+            <span style="background: #fee2e2; color: #ef4444; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">{date_str}</span>
+            <span style="color: #9ca3af; font-size: 13px; margin-left: 10px;">Automated Digest</span>
+        </div>
+        {cards}
     </div>
     """
+    return final_html, date_str
 
 # --- MAIN ---
 def main():
-    print("🎲 Randomizing sources...")
+    print("📰 Collecting News from 30+ Sources...")
     
-    if not BLOG_ID: 
-        print("⚠️ WARNING: BLOG_ID is missing!")
-        return
+    if not BLOG_ID: print("⚠️ WARNING: BLOG_ID is missing!")
+    items, seen = [], set()
+    
+    try:
+        # Loop through all feeds
+        for url in RSS_FEEDS:
+            print(f"DEBUG: Feed: {url}")
+            try:
+                feed = feedparser.parse(url)
+                if not feed.entries: continue
+                
+                # Limit 1 news per site
+                for entry in feed.entries[:1]:
+                    if entry.link not in seen:
+                        desc = entry.get('summary', '') or entry.get('description', '')
+                        summary, impact = get_analysis(entry.title, entry.link, desc)
+                        
+                        items.append({'title': entry.title, 'link': entry.link, 'summary': summary, 'impact': impact})
+                        seen.add(entry.link)
+                        
+                        # Stop at 10 items max (for Telegram limit safety)
+                        if len(items) >= 10:
+                            print("✅ Collected 10 top news items. Stopping.")
+                            break
+                        
+                        print("⏳ Waiting 3s...")
+                        time.sleep(3)
+                        
+                if len(items) >= 10: break
+                
+            except Exception as e:
+                print(f"⚠️ Feed error: {e}")
+                
+    except Exception as e:
+        print(f"❌ Global Error: {e}")
 
-    random.shuffle(RSS_FEEDS) # Shuffle websites
-    
-    final_post = None
-    
-    # Search for ONE valid news
-    for url in RSS_FEEDS:
-        print(f"🔍 Checking: {url}")
-        try:
-            feed = feedparser.parse(url)
-            if not feed.entries: continue
-            
-            # Check top 3 entries of this random feed
-            # REMOVED: History check (if entry.link not in history)
-            for entry in feed.entries[:3]:
-                print(f"✅ Selected Topic: {entry.title}")
-                
-                # Generate Summary/Impact only
-                desc = entry.get('summary', '') or entry.get('description', '')
-                analysis = get_analysis_json(entry.title, entry.link, desc)
-                
-                if analysis:
-                    final_post = {
-                        'title': entry.title,
-                        'link': entry.link,
-                        'summary': analysis['summary'],
-                        'impact': analysis['impact']
-                    }
-                    break
-            
-            if final_post: break # Found our single post, stop searching
-                
-        except Exception as e:
-            print(f"⚠️ Feed error: {e}")
-            continue
-
-    # --- PUBLISH ---
-    if final_post:
-        print(f"🚀 Publishing: {final_post['title']}")
-        
+    if items:
+        # 1. Blogger Post
+        html, date = make_html(items)
+        print("🚀 Publishing to Blogger...")
         try:
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
-            
-            # 1. Make HTML Card
-            html_content = create_single_card_html(final_post)
-            
-            # 2. Publish to Blogger
-            body = {
-                'title': f"⚡ {final_post['title']}", 
-                'content': html_content, 
-                'labels': ['AI Update']
-            }
+            body = {'title': f"⚡ AI Impact Digest | {date}", 'content': html, 'labels': ['AI News']}
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
-            print(f"✅ Blogger Post: {post['url']}")
+            print(f"✅ Published: {post['url']}")
             
-            # 3. Send Telegram Msg
-            tg_msg = f"⚡ *AI Update*\n\n"
-            tg_msg += f"🔹 *{final_post['title']}*\n\n"
-            tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
-            tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
-            tg_msg += f"🔗 [Read More]({post['url']})"
+            # 2. Telegram Detailed Message
+            print("✈️ Sending Detailed Update to Telegram...")
             
-            # Telegram 4096 char limit safety
-            if len(tg_msg) > 4000:
-                 tg_msg = tg_msg[:4000] + "..."
+            # Create a long message string
+            telegram_msg = f"⚡ *AI Impact Digest | {date}*\n\n"
+            
+            for i, item in enumerate(items):
+                # Clean Markdown characters that might break Telegram
+                clean_title = item['title'].replace("*", "").replace("_", "").replace("[", "").replace("]", "")
+                
+                telegram_msg += f"🔹 *{i+1}. {clean_title}*\n\n"
+                telegram_msg += f"📝 {item['summary']}\n\n"
+                telegram_msg += f"🚀 Impact: {item['impact']}\n\n"
+                telegram_msg += f"🔗 [Read Source]({item['link']})\n\n\n"
 
-            requests.post(
-                f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage", 
-                data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
-            )
-            print("✅ Telegram Sent.")
+            telegram_msg += f"-----------------\n📖 *Full Digest on Blog:* {post['url']}"
             
-            # REMOVED: save_history() call
+            # Safety Check: Telegram limit is 4096 chars
+            if len(telegram_msg) > 4000:
+                telegram_msg = telegram_msg[:4000] + "\n\n...(Full list on Blog)"
 
+            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
+                          data={"chat_id": CHANNEL_ID, "text": telegram_msg, "parse_mode": "Markdown"})
+            
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Publishing Error: {e}")
     else:
-        print("😴 No valid news found in checked sources.")
+        print("⚠️ No news found.")
 
 if __name__ == "__main__":
     main()
