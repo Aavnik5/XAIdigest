@@ -2,15 +2,13 @@ import os
 import json
 import requests
 import feedparser
-import datetime
 import time
-import re
 import random
 import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (5-Line Detailed Mode)...")
+print("DEBUG: Script is starting (No History Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -18,7 +16,6 @@ BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
-HISTORY_FILE = 'posted_history.json' 
 
 # --- WEBSITE LIST ---
 RSS_FEEDS = [
@@ -52,24 +49,6 @@ RSS_FEEDS = [
     "https://searchengineland.com/library/platforms/google/google-bard/feed",
 ]
 
-# --- HISTORY SYSTEM ---
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return set(json.load(f))
-        except:
-            return set()
-    return set()
-
-def save_history(link):
-    history = load_history()
-    history.add(link)
-    if len(history) > 500:
-        history = set(list(history)[-500:])
-    with open(HISTORY_FILE, 'w') as f:
-        json.dump(list(history), f)
-
 # --- GEMINI SETUP ---
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
@@ -84,7 +63,7 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
+# --- ANALYSIS FUNCTION ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     
@@ -92,7 +71,6 @@ def get_analysis_json(title, link, description=""):
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
         You are an expert Tech Journalist.
         News Title: "{title}"
@@ -169,7 +147,6 @@ def main():
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
 
-    history = load_history()
     random.shuffle(RSS_FEEDS) # Shuffle websites
     
     final_post = None
@@ -182,22 +159,22 @@ def main():
             if not feed.entries: continue
             
             # Check top 3 entries of this random feed
+            # REMOVED: History check (if entry.link not in history)
             for entry in feed.entries[:3]:
-                if entry.link not in history:
-                    print(f"✅ Found New Topic: {entry.title}")
-                    
-                    # Generate Summary/Impact only
-                    desc = entry.get('summary', '') or entry.get('description', '')
-                    analysis = get_analysis_json(entry.title, entry.link, desc)
-                    
-                    if analysis:
-                        final_post = {
-                            'title': entry.title,
-                            'link': entry.link,
-                            'summary': analysis['summary'],
-                            'impact': analysis['impact']
-                        }
-                        break
+                print(f"✅ Selected Topic: {entry.title}")
+                
+                # Generate Summary/Impact only
+                desc = entry.get('summary', '') or entry.get('description', '')
+                analysis = get_analysis_json(entry.title, entry.link, desc)
+                
+                if analysis:
+                    final_post = {
+                        'title': entry.title,
+                        'link': entry.link,
+                        'summary': analysis['summary'],
+                        'impact': analysis['impact']
+                    }
+                    break
             
             if final_post: break # Found our single post, stop searching
                 
@@ -242,13 +219,12 @@ def main():
             )
             print("✅ Telegram Sent.")
             
-            # 4. Save History
-            save_history(final_post['link'])
+            # REMOVED: save_history() call
 
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
-        print("😴 No new unique news found.")
+        print("😴 No valid news found in checked sources.")
 
 if __name__ == "__main__":
     main()
