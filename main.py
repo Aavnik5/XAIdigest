@@ -10,19 +10,17 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (Fixed & History Reset Mode)...")
+print("DEBUG: Script is starting (Quota Fix Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
-BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
-HISTORY_FILE = 'posted_history.json'  
+CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
+HISTORY_FILE = 'posted_history.json' 
 
-# --- TOKEN CLEANER (Auto-Fixes user errors) ---
+# --- TOKEN CLEANER ---
 RAW_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-# Remove brackets, spaces, and 'bot' prefix if present
 clean_token = str(RAW_TOKEN).strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
 if "api.telegram.org" in clean_token:
     parts = clean_token.split('/bot')
@@ -65,7 +63,6 @@ RSS_FEEDS = [
 
 # --- HISTORY SYSTEM ---
 def save_history(link):
-    # Just save to create file, we don't read heavily in reset mode
     try:
         with open(HISTORY_FILE, 'w') as f:
             json.dump([link], f)
@@ -76,22 +73,13 @@ def save_history(link):
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
-def get_best_model():
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'gemini' in m.name:
-                    return m.name
-    except:
-        pass
-    return "models/gemini-1.5-flash"
-
-# --- ANALYSIS FUNCTION ---
+# --- ANALYSIS FUNCTION (FIXED MODEL) ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     try:
-        model_name = get_best_model()
-        model = genai.GenerativeModel(model_name)
+        # FIX: Hardcoded to 1.5 Flash because it has higher limits (1500/day)
+        # instead of auto-selecting a restricted model.
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
         
         prompt = f"""
         You are an expert Tech Journalist.
@@ -115,10 +103,16 @@ def get_analysis_json(title, link, description=""):
         return json.loads(text)
             
     except Exception as e:
-        print(f"❌ AI Failed ({e}).")
-        return None
+        # Check if error is Rate Limit (429)
+        if "429" in str(e):
+            print("⏳ Quota Exceeded. Waiting 60 seconds to retry...")
+            time.sleep(60) # Wait for rate limit reset
+            return None # Skip this one for now
+        else:
+            print(f"❌ AI Failed ({e}).")
+            return None
 
-# --- HTML CARD GENERATOR (Fixed CSS Link) ---
+# --- HTML CARD GENERATOR ---
 def create_single_card_html(item):
     return f"""
     <link rel="stylesheet" href="[https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0](https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0)" />
@@ -177,18 +171,14 @@ def main():
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
 
-    random.shuffle(RSS_FEEDS) # Shuffle websites
+    random.shuffle(RSS_FEEDS)
     
     final_post = None
-    
-    # Fake User Agent to prevent blocks
     HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
 
-    # Search for ONE valid news
     for url in RSS_FEEDS:
         print(f"🔍 Checking: {url}")
         try:
-            # Try fetching with headers first (better success rate)
             try:
                 resp = requests.get(url, headers=HEADERS, timeout=5)
                 feed = feedparser.parse(resp.content)
@@ -197,12 +187,12 @@ def main():
 
             if not feed.entries: continue
             
-            # Pick the FIRST item (History is deleted, so any item works)
             entry = feed.entries[0]
             print(f"   🎯 Selecting: {entry.title}")
             
-            # Generate Summary/Impact only
             desc = entry.get('summary', '') or entry.get('description', '')
+            
+            # --- API CALL ---
             analysis = get_analysis_json(entry.title, entry.link, desc)
             
             if analysis:
@@ -212,7 +202,10 @@ def main():
                     'summary': analysis['summary'],
                     'impact': analysis['impact']
                 }
-                break # Stop searching after finding one
+                break 
+            else:
+                print("   ⚠️ Quota limit or Error. Switching to next feed...")
+                continue # Try next feed if this one failed
                 
         except Exception as e:
             print(f"⚠️ Feed error: {e}")
@@ -226,10 +219,8 @@ def main():
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
             
-            # 1. Make HTML Card
             html_content = create_single_card_html(final_post)
             
-            # 2. Publish to Blogger
             body = {
                 'title': f"⚡ {final_post['title']}", 
                 'content': html_content, 
@@ -238,7 +229,6 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # 3. Send Telegram Msg
             print("✈️ Sending to Telegram...")
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
@@ -249,7 +239,6 @@ def main():
             if len(tg_msg) > 4000:
                  tg_msg = tg_msg[:4000] + "..."
 
-            # 👇 FIXED URL (Removed Markdown brackets causing errors)
             telegram_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
             
             response = requests.post(
@@ -266,7 +255,7 @@ def main():
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
-        print("😴 No news found (Check internet or API limits).")
+        print("😴 No news found (Quota might be fully exhausted for today).")
 
 if __name__ == "__main__":
     main()
