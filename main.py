@@ -10,7 +10,7 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting...")
+print("DEBUG: Script is starting (5-Line Detailed Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -18,8 +18,9 @@ BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
+HISTORY_FILE = 'posted_history.json' 
 
-# --- 30+ WEBSITES LIST ---
+# --- WEBSITE LIST ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -51,11 +52,28 @@ RSS_FEEDS = [
     "https://searchengineland.com/library/platforms/google/google-bard/feed",
 ]
 
-# --- SETUP GEMINI ---
+# --- HISTORY SYSTEM ---
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, 'r') as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_history(link):
+    history = load_history()
+    history.add(link)
+    if len(history) > 500:
+        history = set(list(history)[-500:])
+    with open(HISTORY_FILE, 'w') as f:
+        json.dump(list(history), f)
+
+# --- GEMINI SETUP ---
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
-# --- DYNAMIC MODEL FINDER ---
 def get_best_model():
     try:
         for m in genai.list_models():
@@ -66,157 +84,171 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- SUMMARY GENERATOR (UPDATED FOR 5-5 LINES) ---
-def get_analysis(title, link, description=""):
-    print(f"DEBUG: Summarizing: {title[:30]}...") 
+# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
+def get_analysis_json(title, link, description=""):
+    print(f"DEBUG: Analyzing: {title[:30]}...") 
     
     try:
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # Updated Prompt: Asking for 5 lines each
+        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
-        Read this news title: "{title}"
-        Link: {link}
+        You are an expert Tech Journalist.
+        News Title: "{title}"
+        Context: {description}
         
-        Write a structured analysis.
+        Task: Write a Detailed Summary (approx 5 lines) and a Detailed Impact Analysis (approx 5 lines).
         
-        1. Summary: Write exactly 5 sentences summarizing the key events.
-        2. Impact: Write exactly 5 sentences explaining the future impact on the industry.
-        
-        Format exactly like this:
-        Summary: [5 sentences content]
-        Impact: [5 sentences content]
+        Return strictly valid JSON:
+        {{
+            "summary": "Write a 5-line detailed paragraph explaining exactly what happened, which companies/models are involved, and the key features released. Do not be vague.",
+            "impact": "Write a 5-line detailed paragraph explaining the long-term consequences, how this changes the AI industry, and who benefits the most from this.",
+        }}
         """
         
         response = model.generate_content(prompt)
         text = response.text.strip()
+        if text.startswith("```json"):
+            text = text.replace("```json", "").replace("```", "")
         
-        summary = ""
-        impact = ""
-        
-        if "Summary:" in text and "Impact:" in text:
-            parts = text.split("Impact:")
-            summary = parts[0].replace("Summary:", "").strip()
-            impact = parts[1].strip()
-            return summary, impact
+        return json.loads(text)
             
     except Exception as e:
-        print(f"❌ AI Failed ({e}). Switching to Manual Fallback.")
+        print(f"❌ AI Failed ({e}).")
+        return None
 
-    print("⚠️ Using Manual Fallback for content.")
-    clean_desc = re.sub('<[^<]+?>', '', description)
-    fallback_summary = clean_desc[:250] + "..." 
-    fallback_impact = "Check the full article for details."
-    
-    return fallback_summary, fallback_impact
-
-# --- GENERATE HTML FOR BLOGGER ---
-def make_html(news_items):
-    date_str = datetime.datetime.now().strftime("%d %B %Y")
-    
-    item = news_items[0]
-    final_html = f"""
-    <div style="font-family: Inter, sans-serif; max-width: 800px; margin: 0 auto;">
-        <div style="background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <h2 style="color: #111; margin-top: 0;">{item['title']}</h2>
+# --- HTML CARD GENERATOR ---
+def create_single_card_html(item):
+    return f"""
+    <link rel="stylesheet" href="[https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0](https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0)" />
+    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto;">
+        
+        <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 30px; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);">
             
-            <div style="margin-bottom: 20px;">
-                <h3 style="color: #ef4444; font-size: 16px; margin-bottom: 8px;">📌 Summary</h3>
-                <p style="color: #444; font-size: 16px; line-height: 1.8; margin-top: 0;">
+            <h2 style="font-size: 24px; font-weight: 800; color: #111; margin-bottom: 25px; line-height: 1.3;">
+                {item['title']}
+            </h2>
+
+            <div style="background: #f9fafb; border-left: 4px solid #ef4444; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <span class="material-symbols-outlined" style="color: #ef4444; margin-right: 8px;">psychology</span>
+                    <strong style="color: #374151; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;">Detailed Summary</strong>
+                </div>
+                <p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.7; text-align: justify;">
                     {item['summary']}
                 </p>
             </div>
-            
-            <div style="background: #f0f9ff; border-left: 4px solid #3b82f6; padding: 15px; margin: 15px 0;">
-                <h3 style="color: #1e3a8a; font-size: 16px; margin-bottom: 8px; margin-top: 0;">🚀 Impact</h3>
-                <p style="margin: 0; color: #1e40af; line-height: 1.8;">
+
+            <div style="background: #f9fafb; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 20px; margin-bottom: 30px;">
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <span class="material-symbols-outlined" style="color: #3b82f6; margin-right: 8px;">bolt</span>
+                    <strong style="color: #374151; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;">Industry Impact</strong>
+                </div>
+                <p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.7; text-align: justify;">
                     {item['impact']}
                 </p>
             </div>
-            
-            <p style="margin-top: 20px;">
-                <a href="{item['link']}" style="background: #000; color: #fff; text-decoration: none; padding: 8px 16px; border-radius: 6px; font-size: 14px;">Read Full Story →</a>
-            </p>
-            <p style="color: #888; font-size: 12px; margin-top: 20px;">Source: {item['source']} | Generated by AI</p>
+
+            <div style="text-align: center;">
+                <a href="{item['link']}" target="_blank" style="background: #111; color: #fff; text-decoration: none; padding: 14px 28px; border-radius: 50px; font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; transition: transform 0.2s;">
+                    Read Original Source
+                    <span class="material-symbols-outlined" style="font-size: 18px; margin-left: 8px;">open_in_new</span>
+                </a>
+            </div>
+
         </div>
     </div>
     """
-    return final_html, date_str
 
 # --- MAIN ---
 def main():
-    print("📰 Selecting ONE Random Source...")
+    print("🎲 Randomizing sources...")
     
-    if not BLOG_ID: print("⚠️ WARNING: BLOG_ID is missing!")
-    items = []
-    
-    try:
-        # 1. Pick ONE random feed
-        random_feed_url = random.choice(RSS_FEEDS)
-        print(f"DEBUG: Selected Random Feed: {random_feed_url}")
+    if not BLOG_ID: 
+        print("⚠️ WARNING: BLOG_ID is missing!")
+        return
 
+    history = load_history()
+    random.shuffle(RSS_FEEDS) # Shuffle websites
+    
+    final_post = None
+    
+    # Search for ONE valid news
+    for url in RSS_FEEDS:
+        print(f"🔍 Checking: {url}")
         try:
-            feed = feedparser.parse(random_feed_url)
+            feed = feedparser.parse(url)
+            if not feed.entries: continue
             
-            if feed.entries:
-                # Get the very first (latest) entry
-                entry = feed.entries[0]
-                
-                print(f"DEBUG: Found Article: {entry.title}")
-                
-                desc = entry.get('summary', '') or entry.get('description', '')
-                summary, impact = get_analysis(entry.title, entry.link, desc)
-                
-                # Extract source name from URL for credit
-                source_name = random_feed_url.split('/')[2].replace('www.', '')
-                
-                items.append({
-                    'title': entry.title, 
-                    'link': entry.link, 
-                    'summary': summary, 
-                    'impact': impact,
-                    'source': source_name
-                })
-            else:
-                print("⚠️ Selected feed was empty, try running again.")
+            # Check top 3 entries of this random feed
+            for entry in feed.entries[:3]:
+                if entry.link not in history:
+                    print(f"✅ Found New Topic: {entry.title}")
+                    
+                    # Generate Summary/Impact only
+                    desc = entry.get('summary', '') or entry.get('description', '')
+                    analysis = get_analysis_json(entry.title, entry.link, desc)
+                    
+                    if analysis:
+                        final_post = {
+                            'title': entry.title,
+                            'link': entry.link,
+                            'summary': analysis['summary'],
+                            'impact': analysis['impact']
+                        }
+                        break
+            
+            if final_post: break # Found our single post, stop searching
                 
         except Exception as e:
-            print(f"⚠️ Feed parsing error: {e}")
-                
-    except Exception as e:
-        print(f"❌ Global Error: {e}")
+            print(f"⚠️ Feed error: {e}")
+            continue
 
-    if items:
-        # 1. Blogger Post
-        html, date = make_html(items)
-        print("🚀 Publishing to Blogger...")
+    # --- PUBLISH ---
+    if final_post:
+        print(f"🚀 Publishing: {final_post['title']}")
+        
         try:
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
-            body = {'title': f"AI Update: {items[0]['title']}", 'content': html, 'labels': ['AI News', 'Trending']}
+            
+            # 1. Make HTML Card
+            html_content = create_single_card_html(final_post)
+            
+            # 2. Publish to Blogger
+            body = {
+                'title': f"⚡ {final_post['title']}", 
+                'content': html_content, 
+                'labels': ['AI Update']
+            }
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
-            print(f"✅ Published: {post['url']}")
+            print(f"✅ Blogger Post: {post['url']}")
             
-            # 2. Telegram Message (Detailed 5-5 Lines)
-            print("✈️ Sending Update to Telegram...")
+            # 3. Send Telegram Msg
+            tg_msg = f"⚡ *AI Update*\n\n"
+            tg_msg += f"🔹 *{final_post['title']}*\n\n"
+            tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
+            tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
+            tg_msg += f"🔗 [Read More]({post['url']})"
             
-            item = items[0]
-            clean_title = item['title'].replace("*", "").replace("_", "").replace("[", "").replace("]", "")
+            # Telegram 4096 char limit safety
+            if len(tg_msg) > 4000:
+                 tg_msg = tg_msg[:4000] + "..."
+
+            requests.post(
+                f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage", 
+                data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
+            )
+            print("✅ Telegram Sent.")
             
-            telegram_msg = f"⚡ *AI Trending Update*\n\n"
-            telegram_msg += f"📰 *{clean_title}*\n\n"
-            telegram_msg += f"📌 *Summary:*\n{item['summary']}\n\n"
-            telegram_msg += f"🚀 *Impact:*\n{item['impact']}\n\n"
-            telegram_msg += f"🔗 [Read More]({item['link']})"
-            
-            requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
-                          data={"chat_id": CHANNEL_ID, "text": telegram_msg, "parse_mode": "Markdown"})
-            
+            # 4. Save History
+            save_history(final_post['link'])
+
         except Exception as e:
-            print(f"❌ Publishing Error: {e}")
+            print(f"❌ Error: {e}")
     else:
-        print("⚠️ No news found.")
+        print("😴 No new unique news found.")
 
 if __name__ == "__main__":
     main()
