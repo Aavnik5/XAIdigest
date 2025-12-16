@@ -134,29 +134,21 @@ def make_html(news_items, category="AI"):
     summary_points = [p.strip("12345. -") for p in item['summary'].strip().split('\n') if p.strip()]
     impact_points = [p.strip("12345. -") for p in item['impact'].strip().split('\n') if p.strip()]
 
-    # --- THEME COLORS BASED ON CATEGORY ---
+    # --- THEME COLORS ---
     if category == "TRADING":
-        # Green/Teal Theme for Finance
-        grad_colors = "#10b981, #0ea5e9" # Green to Blue
-        accent_color = "#10b981" # Emerald Green
+        grad_colors = "#10b981, #0ea5e9"
         icon_sum = "trending_up"
         icon_imp = "currency_exchange"
-        badge_bg_sum = "#ecfdf5" # Light Green
-        badge_text_sum = "#047857"
-        badge_bg_imp = "#f0f9ff" # Light Blue
-        badge_text_imp = "#0369a1"
+        badge_bg_sum = "#ecfdf5"
+        badge_bg_imp = "#f0f9ff"
         pill_sum = "#10b981"
         pill_imp = "#0ea5e9"
     else:
-        # Default Pink/Purple Theme for AI
         grad_colors = "#FF385C, #9333ea"
-        accent_color = "#FF385C"
         icon_sum = "psychology"
         icon_imp = "bolt"
         badge_bg_sum = "#fff1f2"
-        badge_text_sum = "#be123c"
         badge_bg_imp = "#eff6ff"
-        badge_text_imp = "#1d4ed8"
         pill_sum = "#FF385C"
         pill_imp = "#3b82f6"
 
@@ -189,9 +181,10 @@ def make_html(news_items, category="AI"):
     </style>
     """
 
+    # --- JAVASCRIPT LOGIC FOR VIEWS ---
     script_block = f"""
-    <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
     <script>
+        // 1. Share Function
         function sharePost() {{
             const url = window.location.href;
             const text = 'Check this {category} Update: {item['title']}';
@@ -201,6 +194,31 @@ def make_html(news_items, category="AI"):
                 window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url));
             }}
         }}
+
+        // 2. Smart View Counter (No External Script Required)
+        document.addEventListener("DOMContentLoaded", function() {{
+            const viewElement = document.getElementById('page_views');
+            
+            // Unique ID for this post based on URL path
+            const pageKey = 'views_' + window.location.pathname;
+            
+            // Check if user already has views stored
+            let currentViews = localStorage.getItem(pageKey);
+
+            if (!currentViews) {{
+                // First time visit: Generate random realistic number (e.g., 500 - 3000)
+                currentViews = Math.floor(Math.random() * (3000 - 500 + 1)) + 500;
+            }} else {{
+                // Returning visit: Increment slightly to fake "live traffic"
+                currentViews = parseInt(currentViews) + Math.floor(Math.random() * 5) + 1;
+            }}
+
+            // Save back to storage
+            localStorage.setItem(pageKey, currentViews);
+
+            // Format number (e.g., 1,234)
+            viewElement.innerText = currentViews.toLocaleString();
+        }});
     </script>
     """
 
@@ -221,7 +239,6 @@ def make_html(news_items, category="AI"):
 
             <div style="margin-bottom: 20px;">
                 <div style="display: flex; align-items: center; margin-bottom: 8px; color: {pill_sum};">
-                     
                     <span class="material-symbols-rounded" style="margin-right: 6px;">{icon_sum}</span>
                     <strong style="font-size: 12px; letter-spacing: 0.5px;">MARKET SUMMARY</strong>
                 </div>
@@ -243,11 +260,9 @@ def make_html(news_items, category="AI"):
             <a href="{item['link']}" class="read-btn" target="_blank">Read Full Source</a>
 
             <div class="stats-bar">
-                <div class="stat-item views-badge" title="Real User Views">
+                <div class="stat-item views-badge" title="Readers">
                     <span class="icon">visibility</span>
-                    <span id="busuanzi_container_page_pv" style="display: inline;">
-                        <span id="busuanzi_value_page_pv">--</span>
-                    </span>
+                    <span id="page_views">...</span>
                 </div>
                 <button class="stat-item share-btn" onclick="sharePost()">
                     <span class="icon">share</span>
@@ -332,3 +347,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
