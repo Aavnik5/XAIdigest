@@ -10,7 +10,7 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (High-Limit Mode)...")
+print("DEBUG: Script is starting (History Reset Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -20,7 +20,17 @@ BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 HISTORY_FILE = 'posted_history.json' 
 
-# --- WEBSITE LIST (30+ Sources) ---
+# --- TOKEN CLEANER (Fixes 'botbot' or spaces error) ---
+RAW_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+clean_token = str(RAW_TOKEN).strip().replace('[', '').replace(']', '')
+if "api.telegram.org" in clean_token:
+    parts = clean_token.split('/bot')
+    if len(parts) > 1: clean_token = parts[1].split('/')[0]
+if clean_token.lower().startswith('bot'):
+    clean_token = clean_token[3:]
+BOT_TOKEN = clean_token.strip()
+
+# --- WEBSITE LIST ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -74,14 +84,22 @@ def save_history(link):
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
-# --- ANALYSIS FUNCTION (RETRY + STABLE MODEL) ---
+def get_best_model():
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'gemini' in m.name:
+                    return m.name
+    except:
+        pass
+    return "models/gemini-1.5-flash"
+
+# --- ANALYSIS FUNCTION ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     
-    # 👇 FIXED: Force use 'gemini-1.5-flash' because 2.5 has low limits
-    model_name = "models/gemini-1.5-flash"
-    
     try:
+        model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
         prompt = f"""
@@ -98,29 +116,15 @@ def get_analysis_json(title, link, description=""):
         }}
         """
         
-        # 👇 RETRY LOGIC (Agar error aaye to wait karke try karega)
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = model.generate_content(prompt)
-                text = response.text.strip()
-                if text.startswith("```json"):
-                    text = text.replace("```json", "").replace("```", "")
-                
-                return json.loads(text) # Success!
-                
-            except Exception as e:
-                if "429" in str(e): # Quota Error
-                    print(f"⚠️ Quota Hit. Waiting 60 seconds... (Attempt {attempt+1}/{max_retries})")
-                    time.sleep(60)
-                else:
-                    print(f"❌ AI Error: {e}")
-                    break # Other errors, break loop
-                    
-        return None
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text.replace("```json", "").replace("```", "")
+        
+        return json.loads(text)
             
     except Exception as e:
-        print(f"❌ AI Failed Completely ({e}).")
+        print(f"❌ AI Failed ({e}).")
         return None
 
 # --- HTML CARD GENERATOR ---
@@ -168,13 +172,22 @@ def create_single_card_html(item):
 
 # --- MAIN ---
 def main():
+    
+    # --- 1. RESET HISTORY (DELETE FILE) ---
+    if os.path.exists(HISTORY_FILE):
+        os.remove(HISTORY_FILE)
+        print("🗑️ History file deleted! Starting fresh.")
+    else:
+        print("ℹ️ History file not found (Already fresh).")
+
     print("🎲 Randomizing sources...")
     
     if not BLOG_ID: 
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
-
-    history = load_history()
+    
+    # Create fresh history set in memory
+    history = set() 
     random.shuffle(RSS_FEEDS)
     
     final_post = None
@@ -186,12 +199,10 @@ def main():
             feed = feedparser.parse(url)
             if not feed.entries: continue
             
-            # Check top 3 entries
             for entry in feed.entries[:3]:
                 if entry.link not in history:
                     print(f"✅ Found New Topic: {entry.title}")
                     
-                    # Generate Summary/Impact only
                     desc = entry.get('summary', '') or entry.get('description', '')
                     analysis = get_analysis_json(entry.title, entry.link, desc)
                     
@@ -204,7 +215,7 @@ def main():
                         }
                         break
             
-            if final_post: break # Found our single post, stop searching
+            if final_post: break 
                 
         except Exception as e:
             print(f"⚠️ Feed error: {e}")
@@ -218,10 +229,8 @@ def main():
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
             
-            # 1. Make HTML Card
             html_content = create_single_card_html(final_post)
             
-            # 2. Publish to Blogger
             body = {
                 'title': f"⚡ {final_post['title']}", 
                 'content': html_content, 
@@ -230,28 +239,33 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # 3. Send Telegram Msg
+            # --- TELEGRAM ---
+            print("✈️ Sending to Telegram...")
+            
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
             tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
             tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
             tg_msg += f"🔗 [Read More]({post['url']})"
             
-            if len(tg_msg) > 4000: tg_msg = tg_msg[:4000] + "..."
+            if len(tg_msg) > 4000:
+                 tg_msg = tg_msg[:4000] + "..."
 
-            telegram_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
+            # --- FIXED URL CONSTRUCTION (No brackets) ---
+            telegram_api_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
+            
             response = requests.post(
-                telegram_url, 
+                telegram_api_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
             )
             
             if response.status_code == 200:
-                print("✅ Telegram Sent.")
+                print("✅ Telegram Sent Successfully.")
+                # Nayi file create karega aur usme link save karega
+                save_history(final_post['link'])
             else:
                 print(f"❌ Telegram Error: {response.text}")
             
-            save_history(final_post['link'])
-
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
