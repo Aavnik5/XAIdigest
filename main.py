@@ -18,7 +18,6 @@ CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 
-
 # --- 30+ WEBSITES LIST ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
