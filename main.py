@@ -10,19 +10,35 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (Fixed Telegram Connection)...")
+print("DEBUG: Script is starting (Aggressive Token Cleaner Mode)...")
 
-# --- CONFIGURATION & CLEANUP ---
+# --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 HISTORY_FILE = 'posted_history.json' 
 
-# Telegram Token Cleanup (Fixing the error source)
-RAW_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-# Remove spaces and 'bot' prefix if user accidentally added it in environment variable
-BOT_TOKEN = str(RAW_BOT_TOKEN).strip().replace('bot', '', 1) if RAW_BOT_TOKEN.lower().startswith('bot') else str(RAW_BOT_TOKEN).strip()
+# --- AGGRESSIVE TOKEN CLEANER (FIX FOR YOUR ERROR) ---
+RAW_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+
+# 1. Sabse pehle brackets aur markdown hatate hain
+clean_token = str(RAW_TOKEN).strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+
+# 2. Agar user ne galti se pura URL paste kiya hai, toh usme se sirf Token nikalte hain
+if "api.telegram.org" in clean_token:
+    # URL me se last part nikalne ki koshish (formatted like .../botTOKEN/...)
+    parts = clean_token.split('/bot')
+    if len(parts) > 1:
+        clean_token = parts[1].split('/')[0] # Sirf token lega
+
+# 3. Agar 'bot' prefix abhi bhi hai, toh hata do
+if clean_token.lower().startswith('bot'):
+    clean_token = clean_token[3:]
+
+# 4. Final Token Check
+BOT_TOKEN = clean_token.strip()
+print(f"DEBUG: Processed Bot Token: {BOT_TOKEN[:5]}...*****") # Print first 5 chars for check
 
 # --- WEBSITE LIST ---
 RSS_FEEDS = [
@@ -172,10 +188,6 @@ def main():
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
     
-    # Check Token before proceeding
-    if not BOT_TOKEN:
-        print("⚠️ WARNING: TELEGRAM_BOT_TOKEN is missing or empty!")
-
     history = load_history()
     random.shuffle(RSS_FEEDS) 
     
@@ -228,7 +240,7 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # --- FIXED TELEGRAM SECTION ---
+            # --- SAFE TELEGRAM URL CONSTRUCTION ---
             print("✈️ Sending to Telegram...")
             
             tg_msg = f"⚡ *AI Update*\n\n"
@@ -240,10 +252,12 @@ def main():
             if len(tg_msg) > 4000:
                  tg_msg = tg_msg[:4000] + "..."
 
-            # Clean URL construction
+            # Yahan hum manually URL bana rahe hain taaki brackets na aayein
             telegram_api_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
             
-            # Request sending
+            # Debugging print to see if URL looks clean (Tokens masked)
+            print(f"DEBUG: URL Check -> .../bot{BOT_TOKEN[:3]}*****/sendMessage")
+            
             response = requests.post(
                 telegram_api_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
@@ -251,11 +265,10 @@ def main():
             
             if response.status_code == 200:
                 print("✅ Telegram Sent Successfully.")
+                save_history(final_post['link'])
             else:
                 print(f"❌ Telegram Error: {response.text}")
             
-            save_history(final_post['link'])
-
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
