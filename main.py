@@ -19,36 +19,28 @@ CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 
-# --- RSS FEEDS ---
-RSS_FEEDS = [
+# --- RSS FEEDS (AI) ---
+AI_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
     "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
     "https://www.wired.com/feed/category/ai/latest/rss",
     "https://arstechnica.com/tag/ai/feed/",
-    "https://www.engadget.com/tag/ai/rss.xml",
-    "https://gizmodo.com/tag/artificial-intelligence/rss",
-    "https://www.zdnet.com/topic/artificial-intelligence/rss.xml",
-    "https://thenextweb.com/topic/artificial-intelligence/feed",
-    "https://www.unite.ai/feed/",
-    "https://www.marktechpost.com/feed/",
     "https://www.artificialintelligence-news.com/feed/",
     "https://analyticsindiamag.com/feed/",
-    "https://www.kdnuggets.com/feed",
-    "https://dataconomy.com/feed/",
-    "https://insidebigdata.com/feed/",
-    "https://www.technologyreview.com/topic/artificial-intelligence/feed",
-    "https://www.sciencedaily.com/rss/computers_math/artificial_intelligence.xml",
-    "https://techxplore.com/rss-feed/machine-learning-ai-news/",
     "https://blog.google/technology/ai/rss/",
-    "https://blogs.microsoft.com/ai/feed/",
-    "https://blogs.nvidia.com/blog/category/deep-learning/feed/",
-    "https://aws.amazon.com/blogs/machine-learning/feed/",
     "https://openai.com/blog/rss.xml",
-    "https://stackoverflow.blog/tag/ai/feed/",
-    "https://www.infoq.com/ai-ml-data-eng/news/feed/",
-    "https://readwrite.com/category/artificial-intelligence/feed/",
-    "https://searchengineland.com/library/platforms/google/google-bard/feed",
+]
+
+# --- RSS FEEDS (TRADING & FINANCE) ---
+# TradingView ke alternative best feeds jo same data dete hain
+TRADING_FEEDS = [
+    "https://finance.yahoo.com/news/rssindex",
+    "https://www.investing.com/rss/news.rss",
+    "https://www.moneycontrol.com/rss/marketreports.xml",
+    "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
+    "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
+    "https://cointelegraph.com/rss" # Crypto specific
 ]
 
 # --- SETUP GEMINI ---
@@ -64,12 +56,11 @@ def get_best_model():
     return "models/gemini-1.5-flash"
 
 # --- CORE ANALYSIS ENGINE ---
-def get_analysis(title, link, description=""):
-    print(f"DEBUG: Analyzing: {title[:40]}...") 
+def get_analysis(title, link, description="", category="AI"):
+    print(f"DEBUG: Analyzing ({category}): {title[:40]}...") 
     
     try:
         model_name = get_best_model()
-        # Safety settings to prevent blocking technical/security content
         model = genai.GenerativeModel(
             model_name,
             safety_settings=[
@@ -80,10 +71,19 @@ def get_analysis(title, link, description=""):
             ]
         )
         
+        # Context based prompt
+        context_instruction = ""
+        if category == "TRADING":
+            context_instruction = "Focus on market sentiment, stock/crypto price impact, and investor strategy."
+        else:
+            context_instruction = "Focus on technological breakthrough, future capabilities, and industry adoption."
+
         prompt = f"""
-        Provide a professional analysis of this news:
+        Analyze this {category} news.
         TITLE: {title}
         DESCRIPTION: {description[:800]}
+
+        CONTEXT: {context_instruction}
 
         STRICT RULES:
         1. Summary section must have exactly 5 bullet points.
@@ -114,7 +114,6 @@ def get_analysis(title, link, description=""):
             summary = parts[0].replace("Summary:", "").strip()
             impact = parts[1].strip()
             
-            # Validation: check if we actually have points
             if len(impact.split('\n')) >= 3:
                 return summary, impact
         
@@ -123,24 +122,11 @@ def get_analysis(title, link, description=""):
     except Exception as e:
         print(f"❌ AI Error: {e}. Using Smart Fallback.")
         
-    # SMART FALLBACK: If AI fails, provide high-quality context-aware generic lines
-    fallback_summary = (
-        "1. This news highlights a significant shift in the current AI landscape.\n"
-        "2. Organizations are now focusing on integrating these advanced capabilities.\n"
-        "3. Performance and efficiency remain the top priorities for developers.\n"
-        "4. This development addresses long-standing challenges in the tech industry.\n"
-        "5. The announcement has sparked widespread interest among global stakeholders."
-    )
-    fallback_impact = (
-        "1. This will accelerate the adoption of secure AI frameworks worldwide.\n"
-        "2. Industry competitors will likely fast-track their own similar solutions.\n"
-        "3. Long-term data privacy standards will be redefined by this approach.\n"
-        "4. Market demand for specialized AI infrastructure is expected to surge.\n"
-        "5. Future innovations will build upon this foundation for better scalability."
-    )
+    fallback_summary = "1. Important update regarding recent market/tech events.\n2. Details are developing rapidly.\n3. Key stakeholders are involved.\n4. Check source link for charts/data.\n5. Global implications expected."
+    fallback_impact = "1. Market volatility may increase.\n2. Investors should watch key levels.\n3. Long term trend remains to be seen.\n4. Competitors may react soon.\n5. Regulatory eyes are watching."
     return fallback_summary, fallback_impact
 
-def make_html(news_items):
+def make_html(news_items, category="AI"):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
     
@@ -148,74 +134,67 @@ def make_html(news_items):
     summary_points = [p.strip("12345. -") for p in item['summary'].strip().split('\n') if p.strip()]
     impact_points = [p.strip("12345. -") for p in item['impact'].strip().split('\n') if p.strip()]
 
-    # CSS Block
-    css_block = """
+    # --- THEME COLORS BASED ON CATEGORY ---
+    if category == "TRADING":
+        # Green/Teal Theme for Finance
+        grad_colors = "#10b981, #0ea5e9" # Green to Blue
+        accent_color = "#10b981" # Emerald Green
+        icon_sum = "trending_up"
+        icon_imp = "currency_exchange"
+        badge_bg_sum = "#ecfdf5" # Light Green
+        badge_text_sum = "#047857"
+        badge_bg_imp = "#f0f9ff" # Light Blue
+        badge_text_imp = "#0369a1"
+        pill_sum = "#10b981"
+        pill_imp = "#0ea5e9"
+    else:
+        # Default Pink/Purple Theme for AI
+        grad_colors = "#FF385C, #9333ea"
+        accent_color = "#FF385C"
+        icon_sum = "psychology"
+        icon_imp = "bolt"
+        badge_bg_sum = "#fff1f2"
+        badge_text_sum = "#be123c"
+        badge_bg_imp = "#eff6ff"
+        badge_text_imp = "#1d4ed8"
+        pill_sum = "#FF385C"
+        pill_imp = "#3b82f6"
+
+    css_block = f"""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap');
         
-        .ai-card-container { font-family: 'Inter', sans-serif; max-width: 700px; width: 100%; margin: 0 auto; padding: 10px; box-sizing: border-box; }
-        .ai-card { background: #ffffff; border: 1px solid #f3f4f6; border-radius: 20px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden; }
-        .top-gradient { position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: linear-gradient(90deg, #FF385C, #9333ea); }
+        .ai-card-container {{ font-family: 'Inter', sans-serif; max-width: 700px; width: 100%; margin: 0 auto; padding: 10px; box-sizing: border-box; }}
+        .ai-card {{ background: #ffffff; border: 1px solid #f3f4f6; border-radius: 20px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden; }}
+        .top-gradient {{ position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: linear-gradient(90deg, {grad_colors}); }}
         
-        .section-box { border-radius: 16px; padding: 18px; margin-bottom: 20px; }
-        .summary-box { background: #fff1f2; border: 1px solid #ffe4e6; }
-        .impact-box { background: #eff6ff; border: 1px solid #dbeafe; }
+        .section-box {{ border-radius: 16px; padding: 18px; margin-bottom: 20px; }}
+        .summary-box {{ background: {badge_bg_sum}; border: 1px solid {badge_bg_sum}; }}
+        .impact-box {{ background: {badge_bg_imp}; border: 1px solid {badge_bg_imp}; }}
         
-        .list-item { display: flex; align-items: flex-start; margin-bottom: 10px; font-size: 15px; line-height: 1.6; color: #374151; }
-        .number-badge { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; margin-right: 10px; margin-top: 3px; }
-        .sum-badge { background: #FF385C; color: white; }
-        .imp-badge { background: #3b82f6; color: white; }
+        .list-item {{ display: flex; align-items: flex-start; margin-bottom: 10px; font-size: 15px; line-height: 1.6; color: #374151; }}
+        .number-badge {{ flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; margin-right: 10px; margin-top: 3px; }}
+        .sum-badge {{ background: {pill_sum}; color: white; }}
+        .imp-badge {{ background: {pill_imp}; color: white; }}
         
-        .read-btn { display: block; background: #111827; color: white !important; text-decoration: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; margin-bottom: 20px; transition: transform 0.2s; }
-        .read-btn:hover { transform: translateY(-2px); }
+        .read-btn {{ display: block; background: #111827; color: white !important; text-decoration: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; margin-bottom: 20px; transition: transform 0.2s; }}
+        .read-btn:hover {{ transform: translateY(-2px); }}
 
-        /* --- STATS BAR CSS --- */
-        .stats-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-top: 1px solid #f3f4f6;
-            padding-top: 15px;
-            margin-top: 10px;
-        }
-        
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            padding: 8px 16px;
-            border-radius: 50px;
-        }
-
-        .views-badge {
-            background: #f9fafb;
-            color: #6b7280;
-            border: 1px solid #f3f4f6;
-        }
-
-        .share-btn { 
-            background: #f0fdf4; 
-            color: #16a34a; 
-            cursor: pointer;
-            border: none;
-            transition: all 0.2s ease;
-        }
-        .share-btn:hover { background: #dcfce7; transform: scale(1.05); }
-        
-        .icon { font-size: 18px; font-family: 'Material Symbols Rounded'; }
+        .stats-bar {{ display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f3f4f6; padding-top: 15px; margin-top: 10px; }}
+        .stat-item {{ display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 50px; }}
+        .views-badge {{ background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6; }}
+        .share-btn {{ background: #f0fdf4; color: #16a34a; cursor: pointer; border: none; transition: all 0.2s ease; }}
+        .share-btn:hover {{ background: #dcfce7; transform: scale(1.05); }}
+        .icon {{ font-size: 18px; font-family: 'Material Symbols Rounded'; }}
     </style>
     """
 
-    # Script Block: Added 'Busuanzi' for Real View Counting
     script_block = f"""
     <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
     <script>
         function sharePost() {{
-            const url = '{item['link']}';
-            const text = 'Check this AI News: {item['title']}';
-            
+            const url = window.location.href;
+            const text = 'Check this {category} Update: {item['title']}';
             if (navigator.share) {{
                 navigator.share({{ title: '{item['title']}', text: text, url: url }});
             }} else {{
@@ -233,7 +212,7 @@ def make_html(news_items):
             
             <div style="margin-bottom: 20px;">
                 <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
-                    {date_str}
+                    {date_str} • {category}
                 </span>
                 <h1 style="color: #111827; font-size: 22px; font-weight: 800; margin-top: 12px; line-height: 1.3;">
                     {item['title']}
@@ -241,33 +220,39 @@ def make_html(news_items):
             </div>
 
             <div style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px; color: {pill_sum};">
+                     
+                    <span class="material-symbols-rounded" style="margin-right: 6px;">{icon_sum}</span>
+                    <strong style="font-size: 12px; letter-spacing: 0.5px;">MARKET SUMMARY</strong>
+                </div>
                 <div class="section-box summary-box">
                     {''.join([f'<div class="list-item"><span class="number-badge sum-badge">{i+1}</span><span>{p}</span></div>' for i, p in enumerate(summary_points[:5])])}
                 </div>
             </div>
 
             <div style="margin-bottom: 20px;">
+                <div style="display: flex; align-items: center; margin-bottom: 8px; color: {pill_imp};">
+                    <span class="material-symbols-rounded" style="margin-right: 6px;">{icon_imp}</span>
+                    <strong style="font-size: 12px; letter-spacing: 0.5px;">FINANCIAL IMPACT</strong>
+                </div>
                 <div class="section-box impact-box">
                     {''.join([f'<div class="list-item"><span class="number-badge imp-badge">{i+1}</span><span>{p}</span></div>' for i, p in enumerate(impact_points[:5])])}
                 </div>
             </div>
 
-            <a href="{item['link']}" class="read-btn" target="_blank">Read Full Article</a>
+            <a href="{item['link']}" class="read-btn" target="_blank">Read Full Source</a>
 
             <div class="stats-bar">
-                
                 <div class="stat-item views-badge" title="Real User Views">
                     <span class="icon">visibility</span>
                     <span id="busuanzi_container_page_pv" style="display: inline;">
-                        <span id="busuanzi_value_page_pv">0</span> Views
+                        <span id="busuanzi_value_page_pv">--</span>
                     </span>
                 </div>
-
                 <button class="stat-item share-btn" onclick="sharePost()">
                     <span class="icon">share</span>
                     <span>Share This</span>
                 </button>
-
             </div>
         </div>
     </div>
@@ -277,60 +262,73 @@ def make_html(news_items):
     
 # --- MAIN EXECUTION ---
 def main():
-    print("📰 Picking a random trending topic...")
+    print("📰 Script Started...")
     if not BLOG_ID: print("⚠️ WARNING: BLOG_ID missing!")
     
+    # --- RANDOM CATEGORY SELECTION ---
+    # 30% chance for Trading News, 70% for AI News
+    if random.random() < 0.3:
+        category = "TRADING"
+        feed_list = TRADING_FEEDS
+        label_tag = "Trading News"
+        print("📊 Mode: TRADING/FINANCE")
+    else:
+        category = "AI"
+        feed_list = AI_FEEDS
+        label_tag = "AI Update"
+        print("🤖 Mode: ARTIFICIAL INTELLIGENCE")
+
     items = []
-    random.shuffle(RSS_FEEDS) # Shuffle list
+    random.shuffle(feed_list)
     
-    for url in RSS_FEEDS:
+    for url in feed_list:
         try:
             feed = feedparser.parse(url)
             if not feed.entries: continue
             
             entry = feed.entries[0]
             desc = entry.get('summary', '') or entry.get('description', '')
-            summary, impact = get_analysis(entry.title, entry.link, desc)
+            
+            # Pass category to analysis function
+            summary, impact = get_analysis(entry.title, entry.link, desc, category)
             source_name = url.split('/')[2].replace('www.', '')
             
             items.append({'title': entry.title, 'link': entry.link, 'summary': summary, 'impact': impact, 'source': source_name})
-            if items: break # Only 1 post
+            if items: break
         except: continue
 
     if items:
-        html, date = make_html(items)
+        # Pass category to HTML maker for Styling
+        html, date = make_html(items, category)
         try:
             # 1. Blogger
             creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
             service = build('blogger', 'v3', credentials=creds)
-            body = {'title': f"AI Analysis: {items[0]['title']}", 'content': html, 'labels': ['AI Update', 'Tech Insights']}
+            
+            title_prefix = "📈 Market Alert:" if category == "TRADING" else "⚡ AI Update:"
+            body = {'title': f"{title_prefix} {items[0]['title']}", 'content': html, 'labels': [label_tag, 'Trending']}
+            
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Success: {post['url']}")
             
             # 2. Telegram
             item = items[0]
+            header = "📊 *MARKET & TRADING DIGEST*" if category == "TRADING" else "⚡ *AI & TECH DIGEST*"
+            
             telegram_msg = (
-                f"⚡ *XAI  DIGEST ANALYSIS*\n\n"
+                f"{header}\n\n"
                 f"📰 *{item['title']}*\n\n"
-                f"🧠 *SUMMARY*\n{item['summary']}\n\n"
-                f"⚡ *IMPACT*\n{item['impact']}\n\n"
-                f"🔗 [Read Full Story]({item['link']})\n\n"
-                f"📖 [Visit Blog]({post['url']})"
+                f"📝 *SUMMARY*\n{item['summary']}\n\n"
+                f"🚀 *IMPACT*\n{item['impact']}\n\n"
+                f"🔗 [Read Source]({item['link']})\n\n"
+                f"📖 [Read on Blog]({post['url']})"
             )
             requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", 
                           data={"chat_id": CHANNEL_ID, "text": telegram_msg, "parse_mode": "Markdown"})
             print("✅ Telegram Success")
             
         except Exception as e: print(f"❌ Error: {e}")
-    else: print("⚠️ No news found today.")
+    else: print("⚠️ No news found.")
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
