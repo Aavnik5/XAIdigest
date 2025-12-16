@@ -145,51 +145,92 @@ def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
     
-    # Points ko list mein convert karna (formatting ke liye)
+    # Points ko list mein convert karna
     summary_points = item['summary'].strip().split('\n')
     impact_points = item['impact'].strip().split('\n')
 
     final_html = f"""
-    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; background-color: #f9fafb; padding: 20px;">
-        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 32px; shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); position: relative; overflow: hidden; transition: all 0.3s ease;">
+    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+        
+        <div class="news-card" style="
+            background: #ffffff; 
+            border: 1px solid #e5e7eb; 
+            border-radius: 24px; 
+            padding: 32px; 
+            position: relative; 
+            overflow: hidden; 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        ">
             
-            <div style="absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(to bottom, #FF385C, #9333ea); border-radius: 0 4px 4px 0;"></div>
+            <div style="position: absolute; top: 0; left: 0; width: 100%; h: 4px; background: linear-gradient(90deg, #FF385C, #9333ea, #FF385C); background-size: 200% 100%; animation: gradientMove 3s linear infinite;"></div>
 
-            <h2 style="font-size: 24px; font-weight: 800; color: #111827; margin-bottom: 24px; line-height: 1.3;">
+            <h2 style="font-size: 24px; font-weight: 800; color: #111827; margin-bottom: 24px; line-height: 1.3; transition: color 0.3s ease;">
                 {item['title']}
             </h2>
 
-            <div style="margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px; color: #FF385C;">
-                    <span style="font-family: 'Material Symbols Outlined'; margin-right: 8px;">psychology</span>
-                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: #374151;">Gemini Summary</strong>
+            <div style="margin-bottom: 28px; transform: transition 0.3s ease;">
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <span style="background: #FF385C; color: white; border-radius: 8px; padding: 4px; margin-right: 10px; display: flex; align-items: center; justify-content: center;">
+                        <span style="font-family: 'Material Symbols Outlined'; font-size: 20px;">psychology</span>
+                    </span>
+                    <strong style="text-transform: uppercase; font-size: 13px; letter-spacing: 1.5px; color: #4b5563;">Gemini Summary</strong>
                 </div>
-                <div style="background: #fdf2f2; border: 1px solid #fee2e2; border-radius: 16px; padding: 16px;">
-                    <ul style="margin: 0; padding-left: 20px; color: #4b5563; font-size: 15px; line-height: 1.7;">
-                        {''.join([f'<li style="margin-bottom: 8px;">{p.strip("12345. ")}</li>' for p in summary_points if p.strip()])}
+                <div style="background: #fffafa; border: 1px solid #fee2e2; border-radius: 20px; padding: 20px; transition: transform 0.3s ease;">
+                    <ul style="margin: 0; padding-left: 5px; list-style: none; color: #4b5563; font-size: 15px; line-height: 1.8;">
+                        {''.join([f'<li style="margin-bottom: 10px; display: flex; align-items: flex-start;"><span style="color: #FF385C; margin-right: 10px; font-weight: bold;">0{i+1}</span> {p.strip("12345. ")}</li>' for i, p in enumerate(summary_points[:5])])}
                     </ul>
                 </div>
             </div>
 
             <div style="margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px; color: #3b82f6;">
-                    <span style="font-family: 'Material Symbols Outlined'; margin-right: 8px;">bolt</span>
-                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: #374151;">Industry Impact</strong>
+                <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                    <span style="background: #3b82f6; color: white; border-radius: 8px; padding: 4px; margin-right: 10px; display: flex; align-items: center; justify-content: center;">
+                        <span style="font-family: 'Material Symbols Outlined'; font-size: 20px;">bolt</span>
+                    </span>
+                    <strong style="text-transform: uppercase; font-size: 13px; letter-spacing: 1.5px; color: #4b5563;">Industry Impact</strong>
                 </div>
-                <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 16px; padding: 16px;">
-                    <ul style="margin: 0; padding-left: 20px; color: #1e40af; font-size: 15px; line-height: 1.7;">
-                        {''.join([f'<li style="margin-bottom: 8px;">{p.strip("12345. ")}</li>' for p in impact_points if p.strip()])}
+                <div style="background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 20px; padding: 20px;">
+                    <ul style="margin: 0; padding-left: 5px; list-style: none; color: #1e40af; font-size: 15px; line-height: 1.8;">
+                        {''.join([f'<li style="margin-bottom: 10px; display: flex; align-items: flex-start;"><span style="color: #3b82f6; margin-right: 10px; font-weight: bold;">⚡</span> {p.strip("12345. ")}</li>' for p in impact_points[:5]])}
                     </ul>
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid #f3f4f6; pt-20px;">
-                <a href="{item['link']}" style="display: inline-flex; align-items: center; text-decoration: none; color: #FF385C; font-weight: 700; font-size: 14px;">
-                    Read Full Source 
-                    <span style="font-family: 'Material Symbols Outlined'; font-size: 18px; margin-left: 4px;">arrow_forward</span>
+            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 20px; display: flex; justify-content: flex-end;">
+                <a href="{item['link']}" class="btn-read" style="
+                    display: inline-flex; 
+                    align-items: center; 
+                    text-decoration: none; 
+                    background: #111827; 
+                    color: white; 
+                    padding: 12px 24px; 
+                    border-radius: 14px; 
+                    font-weight: 600; 
+                    font-size: 14px; 
+                    transition: all 0.3s ease;
+                ">
+                    Full Article
+                    <span style="font-family: 'Material Symbols Outlined'; font-size: 18px; margin-left: 8px;">open_in_new</span>
                 </a>
             </div>
         </div>
+
+        <style>
+            @keyframes gradientMove {{
+                0% {{ background-position: 0% 50%; }}
+                100% {{ background-position: 200% 50%; }}
+            }}
+            .news-card:hover {{
+                transform: translateY(-8px);
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                border-color: #FF385C;
+            }}
+            .btn-read:hover {{
+                background: #FF385C;
+                transform: scale(1.05);
+            }}
+        </style>
     </div>
     """
     return final_html, date_str
@@ -245,5 +286,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
