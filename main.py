@@ -33,14 +33,13 @@ AI_FEEDS = [
 ]
 
 # --- RSS FEEDS (TRADING & FINANCE) ---
-# TradingView ke alternative best feeds jo same data dete hain
 TRADING_FEEDS = [
     "https://finance.yahoo.com/news/rssindex",
     "https://www.investing.com/rss/news.rss",
     "https://www.moneycontrol.com/rss/marketreports.xml",
     "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664",
-    "https://cointelegraph.com/rss" # Crypto specific
+    "https://cointelegraph.com/rss"
 ]
 
 # --- SETUP GEMINI ---
@@ -71,7 +70,6 @@ def get_analysis(title, link, description="", category="AI"):
             ]
         )
         
-        # Context based prompt
         context_instruction = ""
         if category == "TRADING":
             context_instruction = "Focus on market sentiment, stock/crypto price impact, and investor strategy."
@@ -172,19 +170,18 @@ def make_html(news_items, category="AI"):
         .read-btn {{ display: block; background: #111827; color: white !important; text-decoration: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; margin-bottom: 20px; transition: transform 0.2s; }}
         .read-btn:hover {{ transform: translateY(-2px); }}
 
-        .stats-bar {{ display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f3f4f6; padding-top: 15px; margin-top: 10px; }}
+        .stats-bar {{ display: flex; justify-content: center; align-items: center; border-top: 1px solid #f3f4f6; padding-top: 15px; margin-top: 10px; }}
         .stat-item {{ display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 50px; }}
-        .views-badge {{ background: #f9fafb; color: #6b7280; border: 1px solid #f3f4f6; }}
-        .share-btn {{ background: #f0fdf4; color: #16a34a; cursor: pointer; border: none; transition: all 0.2s ease; }}
-        .share-btn:hover {{ background: #dcfce7; transform: scale(1.05); }}
+        
+        .share-btn {{ background: #f0fdf4; color: #16a34a; cursor: pointer; border: none; transition: all 0.2s ease; width: 100%; justify-content: center; }}
+        .share-btn:hover {{ background: #dcfce7; transform: scale(1.02); }}
         .icon {{ font-size: 18px; font-family: 'Material Symbols Rounded'; }}
     </style>
     """
 
-    # --- JAVASCRIPT LOGIC FOR VIEWS ---
+    # --- JAVASCRIPT LOGIC (ONLY SHARE, NO VIEWS) ---
     script_block = f"""
     <script>
-        // 1. Share Function
         function sharePost() {{
             const url = window.location.href;
             const text = 'Check this {category} Update: {item['title']}';
@@ -194,31 +191,6 @@ def make_html(news_items, category="AI"):
                 window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url));
             }}
         }}
-
-        // 2. Smart View Counter (No External Script Required)
-        document.addEventListener("DOMContentLoaded", function() {{
-            const viewElement = document.getElementById('page_views');
-            
-            // Unique ID for this post based on URL path
-            const pageKey = 'views_' + window.location.pathname;
-            
-            // Check if user already has views stored
-            let currentViews = localStorage.getItem(pageKey);
-
-            if (!currentViews) {{
-                // First time visit: Generate random realistic number (e.g., 500 - 3000)
-                currentViews = Math.floor(Math.random() * (3000 - 500 + 1)) + 500;
-            }} else {{
-                // Returning visit: Increment slightly to fake "live traffic"
-                currentViews = parseInt(currentViews) + Math.floor(Math.random() * 5) + 1;
-            }}
-
-            // Save back to storage
-            localStorage.setItem(pageKey, currentViews);
-
-            // Format number (e.g., 1,234)
-            viewElement.innerText = currentViews.toLocaleString();
-        }});
     </script>
     """
 
@@ -229,8 +201,7 @@ def make_html(news_items, category="AI"):
             <div class="top-gradient"></div>
             
             <div style="margin-bottom: 20px;">
-               
-               <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
+                <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
                     {date_str} • {category}
                 </span>
                 <h1 style="color: #111827; font-size: 22px; font-weight: 800; margin-top: 12px; line-height: 1.3;">
@@ -261,13 +232,9 @@ def make_html(news_items, category="AI"):
             <a href="{item['link']}" class="read-btn" target="_blank">Read Full Source</a>
 
             <div class="stats-bar">
-                <div class="stat-item views-badge" title="Readers">
-                    <span class="icon">visibility</span>
-                    <span id="page_views">...</span>
-                </div>
                 <button class="stat-item share-btn" onclick="sharePost()">
                     <span class="icon">share</span>
-                    <span>Share This</span>
+                    <span>Share This Update</span>
                 </button>
             </div>
         </div>
@@ -282,7 +249,6 @@ def main():
     if not BLOG_ID: print("⚠️ WARNING: BLOG_ID missing!")
     
     # --- RANDOM CATEGORY SELECTION ---
-    # 30% chance for Trading News, 70% for AI News
     if random.random() < 0.3:
         category = "TRADING"
         feed_list = TRADING_FEEDS
@@ -305,7 +271,6 @@ def main():
             entry = feed.entries[0]
             desc = entry.get('summary', '') or entry.get('description', '')
             
-            # Pass category to analysis function
             summary, impact = get_analysis(entry.title, entry.link, desc, category)
             source_name = url.split('/')[2].replace('www.', '')
             
@@ -314,7 +279,6 @@ def main():
         except: continue
 
     if items:
-        # Pass category to HTML maker for Styling
         html, date = make_html(items, category)
         try:
             # 1. Blogger
@@ -348,7 +312,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
