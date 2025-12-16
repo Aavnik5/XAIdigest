@@ -145,92 +145,174 @@ def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
     
-    # Points ko list mein convert karna
-    summary_points = item['summary'].strip().split('\n')
-    impact_points = item['impact'].strip().split('\n')
+    # Points ko list mein convert karna (Empty strings hata kar)
+    summary_points = [p.strip("12345. -") for p in item['summary'].strip().split('\n') if p.strip()]
+    impact_points = [p.strip("12345. -") for p in item['impact'].strip().split('\n') if p.strip()]
+
+    # CSS ko hum ek variable mein rakhenge taaki code clean rahe
+    # Note: Blogger ke liye hum inline styles + internal CSS combine kar rahe hain
+    css_block = """
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        .ai-card-container {
+            font-family: 'Inter', sans-serif;
+            max-width: 700px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+        .ai-card {
+            background: #ffffff;
+            border: 1px solid #f3f4f6;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .ai-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            border-color: #FF385C;
+        }
+        .ai-card:hover .top-gradient {
+            opacity: 1;
+        }
+        .top-gradient {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #FF385C, #9333ea);
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+        .section-box {
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+        .section-box:hover {
+            transform: scale(1.01);
+        }
+        .summary-box { background: #fff1f2; border: 1px solid #ffe4e6; }
+        .impact-box { background: #eff6ff; border: 1px solid #dbeafe; }
+        
+        .list-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 12px;
+            font-size: 15px;
+            line-height: 1.6;
+            color: #374151;
+        }
+        .list-item:last-child { margin-bottom: 0; }
+        
+        .number-badge {
+            flex-shrink: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 12px;
+            margin-top: 2px;
+        }
+        .sum-badge { background: #FF385C; color: white; }
+        .imp-badge { background: #3b82f6; color: white; }
+        
+        .read-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #111827;
+            color: white !important;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            width: auto;
+        }
+        .read-btn:hover {
+            background: #FF385C;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 56, 92, 0.3);
+        }
+
+        /* Mobile Adjustments */
+        @media (max-width: 600px) {
+            .ai-card { padding: 20px 15px; }
+            h1 { font-size: 20px !important; }
+            .section-box { padding: 15px; }
+            .read-btn { width: 100%; }
+        }
+    </style>
+    """
 
     final_html = f"""
-    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
-        
-        <div class="news-card" style="
-            background: #ffffff; 
-            border: 1px solid #e5e7eb; 
-            border-radius: 24px; 
-            padding: 32px; 
-            position: relative; 
-            overflow: hidden; 
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        ">
+    {css_block}
+    <div class="ai-card-container">
+        <div class="ai-card">
+            <div class="top-gradient"></div>
             
-            <div style="position: absolute; top: 0; left: 0; width: 100%; h: 4px; background: linear-gradient(90deg, #FF385C, #9333ea, #FF385C); background-size: 200% 100%; animation: gradientMove 3s linear infinite;"></div>
+            <div style="margin-bottom: 25px;">
+                <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: 1px;">
+                    {date_str}
+                </span>
+                <h1 style="color: #111827; font-size: 24px; font-weight: 800; margin-top: 15px; line-height: 1.3;">
+                    {item['title']}
+                </h1>
+            </div>
 
-            <h2 style="font-size: 24px; font-weight: 800; color: #111827; margin-bottom: 24px; line-height: 1.3; transition: color 0.3s ease;">
-                {item['title']}
-            </h2>
-
-            <div style="margin-bottom: 28px; transform: transition 0.3s ease;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                    <span style="background: #FF385C; color: white; border-radius: 8px; padding: 4px; margin-right: 10px; display: flex; align-items: center; justify-content: center;">
-                        <span style="font-family: 'Material Symbols Outlined'; font-size: 20px;">psychology</span>
-                    </span>
-                    <strong style="text-transform: uppercase; font-size: 13px; letter-spacing: 1.5px; color: #4b5563;">Gemini Summary</strong>
+            <div style="margin-bottom: 25px;">
+                <div style="display: flex; align-items: center; margin-bottom: 10px; color: #FF385C;">
+                    <span style="font-size: 20px; margin-right: 8px;">🧠</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">AI Summary</strong>
                 </div>
-                <div style="background: #fffafa; border: 1px solid #fee2e2; border-radius: 20px; padding: 20px; transition: transform 0.3s ease;">
-                    <ul style="margin: 0; padding-left: 5px; list-style: none; color: #4b5563; font-size: 15px; line-height: 1.8;">
-                        {''.join([f'<li style="margin-bottom: 10px; display: flex; align-items: flex-start;"><span style="color: #FF385C; margin-right: 10px; font-weight: bold;">0{i+1}</span> {p.strip("12345. ")}</li>' for i, p in enumerate(summary_points[:5])])}
-                    </ul>
+                <div class="section-box summary-box">
+                    {''.join([f'''
+                    <div class="list-item">
+                        <span class="number-badge sum-badge">{i+1}</span>
+                        <span>{p}</span>
+                    </div>
+                    ''' for i, p in enumerate(summary_points[:5])])}
                 </div>
             </div>
 
-            <div style="margin-bottom: 24px;">
-                <div style="display: flex; align-items: center; margin-bottom: 12px;">
-                    <span style="background: #3b82f6; color: white; border-radius: 8px; padding: 4px; margin-right: 10px; display: flex; align-items: center; justify-content: center;">
-                        <span style="font-family: 'Material Symbols Outlined'; font-size: 20px;">bolt</span>
-                    </span>
-                    <strong style="text-transform: uppercase; font-size: 13px; letter-spacing: 1.5px; color: #4b5563;">Industry Impact</strong>
+            <div style="margin-bottom: 30px;">
+                <div style="display: flex; align-items: center; margin-bottom: 10px; color: #3b82f6;">
+                    <span style="font-size: 20px; margin-right: 8px;">⚡</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px;">Future Impact</strong>
                 </div>
-                <div style="background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 20px; padding: 20px;">
-                    <ul style="margin: 0; padding-left: 5px; list-style: none; color: #1e40af; font-size: 15px; line-height: 1.8;">
-                        {''.join([f'<li style="margin-bottom: 10px; display: flex; align-items: flex-start;"><span style="color: #3b82f6; margin-right: 10px; font-weight: bold;">⚡</span> {p.strip("12345. ")}</li>' for p in impact_points[:5]])}
-                    </ul>
+                <div class="section-box impact-box">
+                    {''.join([f'''
+                    <div class="list-item">
+                        <span class="number-badge imp-badge">{i+1}</span>
+                        <span>{p}</span>
+                    </div>
+                    ''' for i, p in enumerate(impact_points[:5])])}
                 </div>
             </div>
 
-            <div style="margin-top: 30px; border-top: 1px solid #f3f4f6; padding-top: 20px; display: flex; justify-content: flex-end;">
-                <a href="{item['link']}" class="btn-read" style="
-                    display: inline-flex; 
-                    align-items: center; 
-                    text-decoration: none; 
-                    background: #111827; 
-                    color: white; 
-                    padding: 12px 24px; 
-                    border-radius: 14px; 
-                    font-weight: 600; 
-                    font-size: 14px; 
-                    transition: all 0.3s ease;
-                ">
-                    Full Article
-                    <span style="font-family: 'Material Symbols Outlined'; font-size: 18px; margin-left: 8px;">open_in_new</span>
+            <div style="text-align: center;">
+                <a href="{item['link']}" class="read-btn">
+                    Read Full Story
+                    <span style="margin-left: 8px;">→</span>
                 </a>
+                <p style="margin-top: 15px; color: #9ca3af; font-size: 11px;">
+                    Generated by AI • Source: {item.get('source', 'Web')}
+                </p>
             </div>
         </div>
-
-        <style>
-            @keyframes gradientMove {{
-                0% {{ background-position: 0% 50%; }}
-                100% {{ background-position: 200% 50%; }}
-            }}
-            .news-card:hover {{
-                transform: translateY(-8px);
-                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-                border-color: #FF385C;
-            }}
-            .btn-read:hover {{
-                background: #FF385C;
-                transform: scale(1.05);
-            }}
-        </style>
     </div>
     """
     return final_html, date_str
@@ -270,7 +352,7 @@ def main():
             # 2. Telegram
             item = items[0]
             telegram_msg = (
-                f"⚡ *AI TRENDING ANALYSIS*\n\n"
+                f"⚡ *XAI  DIGEST ANALYSIS*\n\n"
                 f"📰 *{item['title']}*\n\n"
                 f"📌 *SUMMARY*\n{item['summary']}\n\n"
                 f"🚀 *IMPACT*\n{item['impact']}\n\n"
@@ -286,6 +368,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
