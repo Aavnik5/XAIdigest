@@ -144,25 +144,51 @@ def get_analysis(title, link, description=""):
 def make_html(news_items):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
+    
+    # Points ko list mein convert karna (formatting ke liye)
+    summary_points = item['summary'].strip().split('\n')
+    impact_points = item['impact'].strip().split('\n')
+
     final_html = f"""
-    <div style="font-family: 'Segoe UI', Roboto, sans-serif; max-width: 750px; margin: 0 auto; color: #333;">
-        <div style="background: #ffffff; border: 1px solid #e1e4e8; border-radius: 15px; padding: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
-            <h1 style="color: #1a1a1a; font-size: 24px; margin-bottom: 20px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px;">{item['title']}</h1>
+    <div style="font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto; background-color: #f9fafb; padding: 20px;">
+        <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 24px; padding: 32px; shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); position: relative; overflow: hidden; transition: all 0.3s ease;">
             
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #d73a49; font-size: 18px; text-transform: uppercase; letter-spacing: 1px;">📌 Summary</h3>
-                <div style="line-height: 1.8; font-size: 16px; color: #444; white-space: pre-wrap;">{item['summary']}</div>
+            <div style="absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(to bottom, #FF385C, #9333ea); border-radius: 0 4px 4px 0;"></div>
+
+            <h2 style="font-size: 24px; font-weight: 800; color: #111827; margin-bottom: 24px; line-height: 1.3;">
+                {item['title']}
+            </h2>
+
+            <div style="margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; margin-bottom: 12px; color: #FF385C;">
+                    <span style="font-family: 'Material Symbols Outlined'; margin-right: 8px;">psychology</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: #374151;">Gemini Summary</strong>
+                </div>
+                <div style="background: #fdf2f2; border: 1px solid #fee2e2; border-radius: 16px; padding: 16px;">
+                    <ul style="margin: 0; padding-left: 20px; color: #4b5563; font-size: 15px; line-height: 1.7;">
+                        {''.join([f'<li style="margin-bottom: 8px;">{p.strip("12345. ")}</li>' for p in summary_points if p.strip()])}
+                    </ul>
+                </div>
             </div>
-            
-            <div style="background: #f6f8fa; border-left: 5px solid #2188ff; padding: 20px; border-radius: 0 10px 10px 0;">
-                <h3 style="color: #0366d6; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; margin-top: 0;">🚀 Industry Impact</h3>
-                <div style="line-height: 1.8; font-size: 16px; color: #24292e; white-space: pre-wrap;">{item['impact']}</div>
+
+            <div style="margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; margin-bottom: 12px; color: #3b82f6;">
+                    <span style="font-family: 'Material Symbols Outlined'; margin-right: 8px;">bolt</span>
+                    <strong style="text-transform: uppercase; font-size: 12px; letter-spacing: 1px; color: #374151;">Industry Impact</strong>
+                </div>
+                <div style="background: #eff6ff; border: 1px solid #dbeafe; border-radius: 16px; padding: 16px;">
+                    <ul style="margin: 0; padding-left: 20px; color: #1e40af; font-size: 15px; line-height: 1.7;">
+                        {''.join([f'<li style="margin-bottom: 8px;">{p.strip("12345. ")}</li>' for p in impact_points if p.strip()])}
+                    </ul>
+                </div>
             </div>
-            
-            <div style="margin-top: 30px; text-align: center;">
-                <a href="{item['link']}" style="background: #24292e; color: #ffffff; text-decoration: none; padding: 12px 25px; border-radius: 8px; font-weight: 600; display: inline-block;">Read Full Article at Source</a>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 20px; border-top: 1px solid #f3f4f6; pt-20px;">
+                <a href="{item['link']}" style="display: inline-flex; align-items: center; text-decoration: none; color: #FF385C; font-weight: 700; font-size: 14px;">
+                    Read Full Source 
+                    <span style="font-family: 'Material Symbols Outlined'; font-size: 18px; margin-left: 4px;">arrow_forward</span>
+                </a>
             </div>
-            <p style="text-align: center; color: #6a737d; font-size: 12px; margin-top: 20px;">Source: {item['source']} | Automated AI Analysis</p>
         </div>
     </div>
     """
@@ -219,3 +245,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
