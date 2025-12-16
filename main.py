@@ -209,13 +209,14 @@ def make_html(news_items):
     </style>
     """
 
-    # Script Block: Added 'Busuanzi' for Real View Counting
+    # Script Block: Updated to share Current Page URL
     script_block = f"""
     <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
     <script>
         function sharePost() {{
-            const url = '{item['link']}';
-            const text = 'Check this AI News: {item['title']}';
+            // CHANGE: Ab ye 'window.location.href' use karega (Aapke Blog ka Link)
+            const url = window.location.href; 
+            const text = 'Read this AI News Update: {item['title']}';
             
             if (navigator.share) {{
                 navigator.share({{ title: '{item['title']}', text: text, url: url }});
@@ -253,20 +254,20 @@ def make_html(news_items):
                 </div>
             </div>
 
-            <a href="{item['link']}" class="read-btn" target="_blank">Read Full Article</a>
+            <a href="{item['link']}" class="read-btn" target="_blank">Read Full Article Source</a>
 
             <div class="stats-bar">
                 
                 <div class="stat-item views-badge" title="Real User Views">
                     <span class="icon">visibility</span>
                     <span id="busuanzi_container_page_pv" style="display: inline;">
-                        <span id="busuanzi_value_page_pv">0</span> Views
+                        <span id="busuanzi_value_page_pv">--</span>
                     </span>
                 </div>
 
                 <button class="stat-item share-btn" onclick="sharePost()">
                     <span class="icon">share</span>
-                    <span>Share This</span>
+                    <span>Share App</span>
                 </button>
 
             </div>
@@ -275,6 +276,7 @@ def make_html(news_items):
     {script_block}
     """
     return final_html, date_str
+    
 # --- MAIN EXECUTION ---
 def main():
     print("📰 Picking a random trending topic...")
@@ -326,6 +328,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
