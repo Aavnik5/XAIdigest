@@ -230,7 +230,12 @@ def make_html(news_items, category="AI"):
             
             <div style="margin-bottom: 20px;">
                
-               
+               <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
+                    {date_str} • {category}
+                </span>
+                <h1 style="color: #111827; font-size: 22px; font-weight: 800; margin-top: 12px; line-height: 1.3;">
+                    {item['title']}
+                </h1>
             </div>
 
             <div style="margin-bottom: 20px;">
@@ -343,6 +348,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
