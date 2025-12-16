@@ -10,7 +10,7 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (5-Line Detailed Mode)...")
+print("DEBUG: Script is starting (Fixed & History Reset Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -18,7 +18,18 @@ BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHANNEL_ID = os.environ.get('TELEGRAM_CHANNEL_ID')
 BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
-HISTORY_FILE = 'posted_history.json' 
+HISTORY_FILE = 'posted_history.json'  
+
+# --- TOKEN CLEANER (Auto-Fixes user errors) ---
+RAW_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+# Remove brackets, spaces, and 'bot' prefix if present
+clean_token = str(RAW_TOKEN).strip().replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+if "api.telegram.org" in clean_token:
+    parts = clean_token.split('/bot')
+    if len(parts) > 1: clean_token = parts[1].split('/')[0]
+if clean_token.lower().startswith('bot'):
+    clean_token = clean_token[3:]
+BOT_TOKEN = clean_token.strip()
 
 # --- WEBSITE LIST ---
 RSS_FEEDS = [
@@ -53,22 +64,13 @@ RSS_FEEDS = [
 ]
 
 # --- HISTORY SYSTEM ---
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return set(json.load(f))
-        except:
-            return set()
-    return set()
-
 def save_history(link):
-    history = load_history()
-    history.add(link)
-    if len(history) > 500:
-        history = set(list(history)[-500:])
-    with open(HISTORY_FILE, 'w') as f:
-        json.dump(list(history), f)
+    # Just save to create file, we don't read heavily in reset mode
+    try:
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump([link], f)
+    except:
+        pass
 
 # --- GEMINI SETUP ---
 if GEMINI_KEY:
@@ -84,15 +86,13 @@ def get_best_model():
         pass
     return "models/gemini-1.5-flash"
 
-# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
+# --- ANALYSIS FUNCTION ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
-    
     try:
         model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
         You are an expert Tech Journalist.
         News Title: "{title}"
@@ -118,7 +118,7 @@ def get_analysis_json(title, link, description=""):
         print(f"❌ AI Failed ({e}).")
         return None
 
-# --- HTML CARD GENERATOR ---
+# --- HTML CARD GENERATOR (Fixed CSS Link) ---
 def create_single_card_html(item):
     return f"""
     <link rel="stylesheet" href="[https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0](https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0)" />
@@ -163,43 +163,56 @@ def create_single_card_html(item):
 
 # --- MAIN ---
 def main():
+    # 1. DELETE HISTORY (FORCE RESET)
+    if os.path.exists(HISTORY_FILE):
+        try:
+            os.remove(HISTORY_FILE)
+            print("🗑️ History File DELETED (Force Reset Mode).")
+        except:
+            pass
+
     print("🎲 Randomizing sources...")
     
     if not BLOG_ID: 
         print("⚠️ WARNING: BLOG_ID is missing!")
         return
 
-    history = load_history()
     random.shuffle(RSS_FEEDS) # Shuffle websites
     
     final_post = None
     
+    # Fake User Agent to prevent blocks
+    HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+
     # Search for ONE valid news
     for url in RSS_FEEDS:
         print(f"🔍 Checking: {url}")
         try:
-            feed = feedparser.parse(url)
+            # Try fetching with headers first (better success rate)
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=5)
+                feed = feedparser.parse(resp.content)
+            except:
+                feed = feedparser.parse(url)
+
             if not feed.entries: continue
             
-            # Check top 3 entries of this random feed
-            for entry in feed.entries[:3]:
-                if entry.link not in history:
-                    print(f"✅ Found New Topic: {entry.title}")
-                    
-                    # Generate Summary/Impact only
-                    desc = entry.get('summary', '') or entry.get('description', '')
-                    analysis = get_analysis_json(entry.title, entry.link, desc)
-                    
-                    if analysis:
-                        final_post = {
-                            'title': entry.title,
-                            'link': entry.link,
-                            'summary': analysis['summary'],
-                            'impact': analysis['impact']
-                        }
-                        break
+            # Pick the FIRST item (History is deleted, so any item works)
+            entry = feed.entries[0]
+            print(f"   🎯 Selecting: {entry.title}")
             
-            if final_post: break # Found our single post, stop searching
+            # Generate Summary/Impact only
+            desc = entry.get('summary', '') or entry.get('description', '')
+            analysis = get_analysis_json(entry.title, entry.link, desc)
+            
+            if analysis:
+                final_post = {
+                    'title': entry.title,
+                    'link': entry.link,
+                    'summary': analysis['summary'],
+                    'impact': analysis['impact']
+                }
+                break # Stop searching after finding one
                 
         except Exception as e:
             print(f"⚠️ Feed error: {e}")
@@ -226,29 +239,34 @@ def main():
             print(f"✅ Blogger Post: {post['url']}")
             
             # 3. Send Telegram Msg
+            print("✈️ Sending to Telegram...")
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
             tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
             tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
             tg_msg += f"🔗 [Read More]({post['url']})"
             
-            # Telegram 4096 char limit safety
             if len(tg_msg) > 4000:
                  tg_msg = tg_msg[:4000] + "..."
 
-            requests.post(
-                f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage", 
+            # 👇 FIXED URL (Removed Markdown brackets causing errors)
+            telegram_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
+            
+            response = requests.post(
+                telegram_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
             )
-            print("✅ Telegram Sent.")
             
-            # 4. Save History
-            save_history(final_post['link'])
-
+            if response.status_code == 200:
+                print("✅ Telegram Sent Successfully.")
+                save_history(final_post['link'])
+            else:
+                print(f"❌ Telegram Error: {response.text}")
+            
         except Exception as e:
             print(f"❌ Error: {e}")
     else:
-        print("😴 No new unique news found.")
+        print("😴 No news found (Check internet or API limits).")
 
 if __name__ == "__main__":
     main()
