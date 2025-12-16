@@ -3,12 +3,11 @@ name: Daily AI Digest
 on:
   schedule:
     # -------------------------------------------------------
-    # 👇 UPDATED TIME (IST ke hisaab se 8 AM aur 7 PM)
-    # GitHub UTC use karta hai.
-    # 2:30 UTC = 8:00 AM IST
-    # 13:30 UTC = 7:00 PM IST
+    # 👇 UPDATED TIME: Runs Every 1 Hour
+    # Syntax: '0 * * * *'
+    # Matlab: Har ghante ke shuruwat mein chalega (e.g. 1:00, 2:00, 3:00...)
     # -------------------------------------------------------
-    - cron: '30 2,13 * * *'
+    - cron: '0 * * * *'
   
   workflow_dispatch:      # Manual Test Button
 
