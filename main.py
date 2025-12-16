@@ -10,7 +10,7 @@ import google.generativeai as genai
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-print("DEBUG: Script is starting (5-Line Detailed Mode)...")
+print("DEBUG: Script is starting (High-Limit Mode)...")
 
 # --- CONFIGURATION ---
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY')
@@ -20,7 +20,7 @@ BLOG_ID = os.environ.get('BLOGGER_ID')
 TOKEN_JSON_STR = os.environ.get('BLOGGER_TOKEN_JSON')
 HISTORY_FILE = 'posted_history.json' 
 
-# --- WEBSITE LIST ---
+# --- WEBSITE LIST (30+ Sources) ---
 RSS_FEEDS = [
     "https://techcrunch.com/category/artificial-intelligence/feed/",
     "https://venturebeat.com/category/ai/feed/",
@@ -74,25 +74,16 @@ def save_history(link):
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
 
-def get_best_model():
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'gemini' in m.name:
-                    return m.name
-    except:
-        pass
-    return "models/gemini-1.5-flash"
-
-# --- ANALYSIS FUNCTION (UPDATED FOR 5 LINES) ---
+# --- ANALYSIS FUNCTION (RETRY + STABLE MODEL) ---
 def get_analysis_json(title, link, description=""):
     print(f"DEBUG: Analyzing: {title[:30]}...") 
     
+    # 👇 FIXED: Force use 'gemini-1.5-flash' because 2.5 has low limits
+    model_name = "models/gemini-1.5-flash"
+    
     try:
-        model_name = get_best_model()
         model = genai.GenerativeModel(model_name)
         
-        # --- PROMPT CHANGED HERE FOR 5 LINES ---
         prompt = f"""
         You are an expert Tech Journalist.
         News Title: "{title}"
@@ -107,15 +98,29 @@ def get_analysis_json(title, link, description=""):
         }}
         """
         
-        response = model.generate_content(prompt)
-        text = response.text.strip()
-        if text.startswith("```json"):
-            text = text.replace("```json", "").replace("```", "")
-        
-        return json.loads(text)
+        # 👇 RETRY LOGIC (Agar error aaye to wait karke try karega)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(prompt)
+                text = response.text.strip()
+                if text.startswith("```json"):
+                    text = text.replace("```json", "").replace("```", "")
+                
+                return json.loads(text) # Success!
+                
+            except Exception as e:
+                if "429" in str(e): # Quota Error
+                    print(f"⚠️ Quota Hit. Waiting 60 seconds... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(60)
+                else:
+                    print(f"❌ AI Error: {e}")
+                    break # Other errors, break loop
+                    
+        return None
             
     except Exception as e:
-        print(f"❌ AI Failed ({e}).")
+        print(f"❌ AI Failed Completely ({e}).")
         return None
 
 # --- HTML CARD GENERATOR ---
@@ -170,7 +175,7 @@ def main():
         return
 
     history = load_history()
-    random.shuffle(RSS_FEEDS) # Shuffle websites
+    random.shuffle(RSS_FEEDS)
     
     final_post = None
     
@@ -181,7 +186,7 @@ def main():
             feed = feedparser.parse(url)
             if not feed.entries: continue
             
-            # Check top 3 entries of this random feed
+            # Check top 3 entries
             for entry in feed.entries[:3]:
                 if entry.link not in history:
                     print(f"✅ Found New Topic: {entry.title}")
@@ -225,32 +230,26 @@ def main():
             post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
             print(f"✅ Blogger Post: {post['url']}")
             
-            # 3. Send Telegram Msg (FIXED URL)
+            # 3. Send Telegram Msg
             tg_msg = f"⚡ *AI Update*\n\n"
             tg_msg += f"🔹 *{final_post['title']}*\n\n"
             tg_msg += f"📝 *Summary:*\n{final_post['summary']}\n\n"
             tg_msg += f"🚀 *Impact:*\n{final_post['impact']}\n\n"
             tg_msg += f"🔗 [Read More]({post['url']})"
             
-            # Telegram 4096 char limit safety
-            if len(tg_msg) > 4000:
-                 tg_msg = tg_msg[:4000] + "..."
+            if len(tg_msg) > 4000: tg_msg = tg_msg[:4000] + "..."
 
-            # 👇 FIXED REQUEST - Removed Markdown Brackets from URL
             telegram_url = f"[https://api.telegram.org/bot](https://api.telegram.org/bot){BOT_TOKEN}/sendMessage"
-            
             response = requests.post(
                 telegram_url, 
                 data={"chat_id": CHANNEL_ID, "text": tg_msg, "parse_mode": "Markdown"}
             )
             
-            # Check if sent successfully
             if response.status_code == 200:
                 print("✅ Telegram Sent.")
             else:
                 print(f"❌ Telegram Error: {response.text}")
             
-            # 4. Save History
             save_history(final_post['link'])
 
         except Exception as e:
