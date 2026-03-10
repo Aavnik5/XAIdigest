@@ -51,19 +51,51 @@ TRADING_FEEDS = [
     "https://cointelegraph.com/rss",
 ]
 
+# --- ARTICLE SCHEMA (prose-based for AdSense compliance) ---
+# Each post generates real paragraphs, not just bullet points.
+ARTICLE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "opening": {
+            "type": "string",
+            "description": "2-3 sentence paragraph: what happened, who did it, and when. Be specific.",
+        },
+        "context": {
+            "type": "string",
+            "description": "2-3 sentence paragraph: relevant background — why this is happening now and what led to it.",
+        },
+        "analysis": {
+            "type": "string",
+            "description": "3-4 sentence paragraph: what this changes, what it means for the sector, and any nuance worth noting.",
+        },
+        "impact": {
+            "type": "string",
+            "description": "2-3 sentence paragraph: who is most affected and what to watch for next.",
+        },
+        "takeaways": {
+            "type": "array",
+            "description": "Exactly 3 short bullet points (under 15 words each) for quick scanners.",
+            "items": {"type": "string"},
+            "minItems": 3,
+            "maxItems": 3,
+        },
+    },
+    "required": ["opening", "context", "analysis", "impact", "takeaways"],
+    "additionalProperties": False,
+}
+
+# Legacy schema kept only for Telegram fallback formatting
 ANALYSIS_SCHEMA = {
     "type": "object",
     "properties": {
         "summary": {
             "type": "array",
-            "description": "Five concrete takeaways about what happened.",
             "items": {"type": "string"},
             "minItems": 5,
             "maxItems": 5,
         },
         "impact": {
             "type": "array",
-            "description": "Five concrete implications about what matters next.",
             "items": {"type": "string"},
             "minItems": 5,
             "maxItems": 5,
@@ -72,64 +104,6 @@ ANALYSIS_SCHEMA = {
     "required": ["summary", "impact"],
     "additionalProperties": False,
 }
-
-AI_IMPACT_RULES = [
-    (
-        r"\bsecurity|cyber|privacy|trust|safety\b",
-        "Security and governance reviews may speed up across similar AI deployments.",
-    ),
-    (
-        r"\bopenai|google|meta|microsoft|anthropic|amazon\b",
-        "Competing AI platforms may answer with roadmap or pricing moves.",
-    ),
-    (
-        r"\bagent|automation|assistant|copilot\b",
-        "Teams evaluating automation may compare this against existing workflow tools.",
-    ),
-    (
-        r"\bresearch|preview|beta|pilot\b",
-        "Short-term impact will likely be strongest among developers testing early access.",
-    ),
-    (
-        r"\bopen source|open-source|weights\b",
-        "Open model ecosystems could gain adoption if this lowers switching costs.",
-    ),
-    (
-        r"\bregulat|policy|compliance|copyright\b",
-        "Compliance and policy scrutiny may rise if rollout expands quickly.",
-    ),
-    (
-        r"\bchip|gpu|inference|compute|datacenter\b",
-        "Infrastructure and AI tooling vendors may benefit if demand scales further.",
-    ),
-]
-
-TRADING_IMPACT_RULES = [
-    (
-        r"\bbitcoin|btc|crypto|ethereum|eth|token\b",
-        "Crypto sentiment and short-term positioning may react quickly to this headline.",
-    ),
-    (
-        r"\bearnings|guidance|revenue|profit|margin\b",
-        "Analysts may revise growth and margin assumptions for related names.",
-    ),
-    (
-        r"\bsec|fed|rate|inflation|tariff|policy|regulat\b",
-        "Macro and policy-sensitive sectors could see higher volatility.",
-    ),
-    (
-        r"\bmerger|acquisition|deal|partnership\b",
-        "Peers in the same segment may reprice on consolidation expectations.",
-    ),
-    (
-        r"\boil|gold|commodity|yield|bond|treasury\b",
-        "Cross-asset traders may reassess inflation and rate expectations.",
-    ),
-    (
-        r"\bupgrade|downgrade|target\b",
-        "Positioning may shift as brokers and funds update conviction levels.",
-    ),
-]
 
 
 def clean_text(value, max_chars=1200):
@@ -148,27 +122,14 @@ def normalize_point(text, max_words=18):
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
     if not cleaned:
         return ""
-
     words = cleaned.split()
     if len(words) > max_words:
         trimmed_words = words[:max_words]
         while trimmed_words and trimmed_words[-1].lower() in {
-            "and",
-            "or",
-            "but",
-            "to",
-            "for",
-            "of",
-            "in",
-            "on",
-            "with",
-            "a",
-            "an",
-            "the",
+            "and", "or", "but", "to", "for", "of", "in", "on", "with", "a", "an", "the",
         }:
             trimmed_words.pop()
         cleaned = " ".join(trimmed_words).rstrip(",;:-")
-
     if cleaned[-1] not in ".!?":
         cleaned += "."
     return cleaned[0].upper() + cleaned[1:]
@@ -178,117 +139,52 @@ def format_points(points):
     return "\n".join(f"{index + 1}. {point}" for index, point in enumerate(points[:5]))
 
 
-def build_summary_fallback(title, description):
-    candidates = [title] + split_sentences(description)
-    points = []
-    seen = set()
+def build_prose_fallback(title, description, category):
+    """Generate minimal prose fallback when LLM is unavailable."""
+    clean_desc = description or title
+    source_label = "AI" if category == "AI" else "market"
 
-    for candidate in candidates:
-        point = normalize_point(candidate)
-        if len(point.split()) < 4:
-            continue
-
-        key = re.sub(r"[^a-z0-9]+", " ", point.lower()).strip()
-        if not key or key in seen:
-            continue
-
-        seen.add(key)
-        points.append(point)
-        if len(points) == 5:
-            break
-
-    return points
-
-
-def build_impact_fallback(title, description, category):
-    text = f"{title} {description}".lower()
-    focus = re.split(r"[:|-]", title, maxsplit=1)[0].strip() or title.strip()
-    focus = normalize_point(focus, max_words=8).rstrip(".")
-
-    rules = TRADING_IMPACT_RULES if category == "TRADING" else AI_IMPACT_RULES
-    points = []
-    seen = set()
-
-    for pattern, template in rules:
-        if re.search(pattern, text):
-            key = template.lower()
-            if key not in seen:
-                seen.add(key)
-                points.append(template)
-        if len(points) == 5:
-            return points
-
-    if category == "TRADING":
-        supplements = [
-            f"{focus} could influence trading sentiment around related names and sectors.",
-            "Position sizing and short-term volatility may stay elevated after this update.",
-            "Institutional flows may depend on whether the news changes the fundamental outlook.",
-            "Watch peer reactions for confirmation instead of treating the headline alone as trend proof.",
-            "The next catalyst will likely decide whether the move extends or fades.",
-        ]
-    else:
-        supplements = [
-            f"{focus} could shape near-term competitor decisions in the same space.",
-            f"{focus} may influence customer adoption if execution matches the headline.",
-            "Teams will likely compare rollout speed against the broader market narrative.",
-            "The strongest reaction should come from adjacent products and ecosystem partners.",
-            "Follow-up announcements will matter more than the headline if details remain limited.",
-        ]
-
-    for supplement in supplements:
-        key = supplement.lower()
-        if key not in seen:
-            seen.add(key)
-            points.append(supplement)
-        if len(points) == 5:
-            break
-
-    return points[:5]
+    opening = (
+        f"{title}. "
+        f"The development was reported today and is drawing attention across the {source_label} sector."
+    )
+    context = (
+        f"This story is part of a broader pattern of activity in the space. "
+        f"Readers can find the full details in the source article linked below."
+    )
+    analysis = (
+        f"Based on the available information, this update carries meaningful implications. "
+        f"{clean_desc[:200].rstrip('. ')}. "
+        f"The full scope of impact will become clearer as more reporting follows."
+    )
+    impact = (
+        f"Stakeholders in the {'AI and developer' if category == 'AI' else 'trading and finance'} space "
+        f"should monitor follow-up announcements closely. "
+        f"Early signals suggest this could influence decisions in adjacent areas as well."
+    )
+    takeaways = [
+        normalize_point(title),
+        "Full context is available in the original source article.",
+        "Further updates are expected as the story develops.",
+    ]
+    return {
+        "opening": opening,
+        "context": context,
+        "analysis": analysis,
+        "impact": impact,
+        "takeaways": takeaways,
+    }
 
 
-def build_article_fallback(title, description, category):
-    summary_points = build_summary_fallback(title, description)
-    impact_points = build_impact_fallback(title, description, category)
-
-    if category == "TRADING":
-        summary_fillers = [
-            "The feed excerpt is short, so the source article should be checked for the full market context.",
-            "Key pricing, volume, or guidance details may only be available in the original report.",
-            "This headline is likely one part of a broader market story that needs source-level confirmation.",
-        ]
-    else:
-        summary_fillers = [
-            "The feed summary is limited, so the source article should be checked for fuller product context.",
-            "Launch scope, availability, and technical limits may only be clear in the original post.",
-            "This update likely has more implementation detail than the RSS excerpt shows.",
-        ]
-
-    filler_index = 0
-    while len(summary_points) < 5:
-        summary_points.append(normalize_point(summary_fillers[filler_index % len(summary_fillers)]))
-        filler_index += 1
-
-    while len(impact_points) < 5:
-        impact_points.append(
-            normalize_point(
-                "More concrete downstream impact should become clearer once follow-up details are published."
-            )
-        )
-
-    return format_points(summary_points), format_points(impact_points)
-
-
-def validate_points(points, label):
-    if not isinstance(points, list) or len(points) < 5:
-        raise ValueError(f"{label} must contain 5 points")
-
-    cleaned = []
-    for point in points[:5]:
-        normalized = normalize_point(point)
-        if len(normalized.split()) < 4:
-            raise ValueError(f"{label} point too short: {point}")
-        cleaned.append(normalized)
-    return cleaned
+def validate_article(parsed):
+    for key in ("opening", "context", "analysis", "impact"):
+        val = parsed.get(key, "")
+        if not isinstance(val, str) or len(val.strip().split()) < 10:
+            raise ValueError(f"Field '{key}' is too short or missing")
+    takeaways = parsed.get("takeaways", [])
+    if not isinstance(takeaways, list) or len(takeaways) < 3:
+        raise ValueError("takeaways must have at least 3 items")
+    return parsed
 
 
 def get_context_instruction(category):
@@ -298,13 +194,15 @@ def get_context_instruction(category):
 
 
 def build_analysis_messages(title, link, description, category):
-    schema_hint = json.dumps(ANALYSIS_SCHEMA, separators=(",", ":"))
+    schema_hint = json.dumps(ARTICLE_SCHEMA, separators=(",", ":"))
     system_prompt = (
-        "You write concise, specific news analysis. "
-        "Return only valid JSON matching the provided schema."
+        "You are a professional tech and business journalist. "
+        "Write clear, original, analytical prose. "
+        "Return only valid JSON matching the provided schema. "
+        "Do not use vague filler phrases."
     )
     user_prompt = f"""
-Analyze this {category} news item using only the provided title and description.
+Write a short news analysis article for this {category} story.
 
 TITLE: {title}
 DESCRIPTION: {description or "No description provided."}
@@ -312,12 +210,14 @@ SOURCE LINK: {link}
 CONTEXT: {get_context_instruction(category)}
 
 RULES:
-- Be specific. Mention named companies, products, or market signals when present.
-- Do not use vague filler like "details are developing", "stakeholders are involved", or "global implications expected".
-- Each point should be a single sentence and under 18 words.
-- Return exactly 5 summary points and exactly 5 impact points.
-- The summary should describe what happened.
-- The impact should explain why it matters next.
+- Write in third-person journalistic style.
+- Be specific — mention named companies, products, figures, or market signals when present.
+- Do NOT use filler like "details are developing", "global implications expected", or "stakeholders are involved".
+- opening: 2-3 sentences explaining what happened.
+- context: 2-3 sentences of relevant background.
+- analysis: 3-4 sentences of your own analysis of what this means.
+- impact: 2-3 sentences on who is affected and what to watch next.
+- takeaways: exactly 3 bullet points, each under 15 words.
 - Use this JSON schema: {schema_hint}
 """.strip()
     return [
@@ -338,22 +238,18 @@ def extract_openai_style_content(payload):
     choices = payload.get("choices") or []
     if not choices:
         raise ValueError(f"No choices returned: {payload}")
-
     message = choices[0].get("message") or {}
     content = message.get("content")
-
     if isinstance(content, str) and content.strip():
         return content.strip()
-
     if isinstance(content, list):
-        text_parts = []
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "text":
-                text_parts.append(part.get("text", ""))
+        text_parts = [
+            part.get("text", "") for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        ]
         combined = "".join(text_parts).strip()
         if combined:
             return combined
-
     raise ValueError(f"Model response content was empty: {payload}")
 
 
@@ -386,28 +282,23 @@ def can_reach_ollama():
 def get_provider_order():
     if LLM_PROVIDER not in {"groq", "ollama", "auto"}:
         raise ValueError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}")
-
     if LLM_PROVIDER == "groq":
         if not GROQ_API_KEY:
             raise ValueError("GROQ_API_KEY is missing")
         print("LLM provider order: ['groq']")
         return ["groq"]
-
     if LLM_PROVIDER == "ollama":
         if not can_reach_ollama():
             raise ValueError(f"Ollama is not reachable at {OLLAMA_BASE_URL}")
         print("LLM provider order: ['ollama']")
         return ["ollama"]
-
     provider_order = []
     if GROQ_API_KEY:
         provider_order.append("groq")
     if can_reach_ollama():
         provider_order.append("ollama")
-
     if not provider_order:
         raise ValueError("Neither Groq nor Ollama is configured and reachable")
-
     print(f"LLM provider order: {provider_order}")
     return provider_order
 
@@ -415,7 +306,6 @@ def get_provider_order():
 def request_groq_analysis(messages):
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is missing")
-
     response = requests.post(
         f"{GROQ_BASE_URL}/chat/completions",
         headers={
@@ -425,13 +315,13 @@ def request_groq_analysis(messages):
         json={
             "model": GROQ_MODEL,
             "messages": messages,
-            "temperature": 0.4,
+            "temperature": 0.5,
             "stream": False,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "news_analysis",
-                    "schema": ANALYSIS_SCHEMA,
+                    "name": "article_analysis",
+                    "schema": ARTICLE_SCHEMA,
                     "strict": True,
                 },
             },
@@ -450,13 +340,12 @@ def request_ollama_analysis(messages):
             "model": OLLAMA_MODEL,
             "messages": messages,
             "stream": False,
-            "format": ANALYSIS_SCHEMA,
-            "options": {"temperature": 0.4},
+            "format": ARTICLE_SCHEMA,
+            "options": {"temperature": 0.5},
         },
         timeout=LLM_REQUEST_TIMEOUT,
     )
     response.raise_for_status()
-
     payload = response.json()
     message = payload.get("message") or {}
     content = message.get("content", "")
@@ -468,13 +357,14 @@ def request_ollama_analysis(messages):
 def get_blogger_service():
     if not BLOG_ID or not TOKEN_JSON_STR:
         return None
-
     creds = Credentials.from_authorized_user_info(json.loads(TOKEN_JSON_STR))
     return build("blogger", "v3", credentials=creds)
 
 
 def normalize_title_key(title):
-    cleaned = re.sub(r"^(ai update:|market alert:)\s*", "", (title or "").strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"^(ai update:|market alert:)\s*", "", (title or "").strip(), flags=re.IGNORECASE
+    )
     cleaned = re.sub(r"\s+", " ", cleaned).strip().lower()
     return cleaned
 
@@ -490,25 +380,20 @@ def extract_links_from_html(content):
 def load_recent_post_keys(service, max_results=BLOGGER_DUP_LOOKBACK):
     if service is None:
         return set(), set()
-
     response = (
         service.posts()
         .list(blogId=BLOG_ID, maxResults=max_results, fetchBodies=True)
         .execute()
     )
     posts = response.get("items", [])
-
     title_keys = set()
     link_keys = set()
-
     for post in posts:
         title_key = normalize_title_key(post.get("title", ""))
         if title_key:
             title_keys.add(title_key)
-
         for link in extract_links_from_html(post.get("content", "")):
             link_keys.add(link)
-
     print(f"Loaded {len(posts)} recent Blogger posts for duplicate checks.")
     return title_keys, link_keys
 
@@ -521,7 +406,7 @@ def is_duplicate_post(entry, seen_title_keys, seen_links):
 
 # --- CORE ANALYSIS ENGINE ---
 def get_analysis(title, link, description="", category="AI"):
-    print(f"DEBUG: Analyzing ({category}): {title[:40]}...")
+    print(f"DEBUG: Analyzing ({category}): {title[:60]}...")
     cleaned_description = clean_text(description)
 
     try:
@@ -538,9 +423,8 @@ def get_analysis(title, link, description="", category="AI"):
                 else:
                     raise ValueError(f"Unsupported provider: {provider}")
 
-                summary_points = validate_points(parsed.get("summary"), "summary")
-                impact_points = validate_points(parsed.get("impact"), "impact")
-                return format_points(summary_points), format_points(impact_points)
+                validated = validate_article(parsed)
+                return validated
             except Exception as provider_exc:
                 provider_errors.append(f"{provider}: {provider_exc}")
 
@@ -549,141 +433,165 @@ def get_analysis(title, link, description="", category="AI"):
         raise ValueError("No configured LLM provider was available")
 
     except Exception as exc:
-        print(f"LLM Error: {exc}. Using article-based fallback.")
+        print(f"LLM Error: {exc}. Using prose fallback.")
 
-    return build_article_fallback(title, cleaned_description, category)
+    return build_prose_fallback(title, cleaned_description, category)
 
 
 def make_html(news_items, category="AI"):
     date_str = datetime.datetime.now().strftime("%d %B %Y")
     item = news_items[0]
-
-    summary_points = [p.strip("12345. -") for p in item["summary"].strip().split("\n") if p.strip()]
-    impact_points = [p.strip("12345. -") for p in item["impact"].strip().split("\n") if p.strip()]
+    article = item["article"]
 
     if category == "TRADING":
-        grad_colors = "#10b981, #0ea5e9"
-        icon_sum = "trending_up"
-        icon_imp = "currency_exchange"
-        badge_bg_sum = "#ecfdf5"
-        badge_bg_imp = "#f0f9ff"
-        pill_sum = "#10b981"
-        pill_imp = "#0ea5e9"
-        summary_label = "MARKET SUMMARY"
-        impact_label = "FINANCIAL IMPACT"
+        accent_color = "#0ea5e9"
+        accent_light = "#f0f9ff"
+        category_label = "TRADING"
+        read_more_label = "View Original Report"
     else:
-        grad_colors = "#FF385C, #9333ea"
-        icon_sum = "psychology"
-        icon_imp = "bolt"
-        badge_bg_sum = "#fff1f2"
-        badge_bg_imp = "#eff6ff"
-        pill_sum = "#FF385C"
-        pill_imp = "#3b82f6"
-        summary_label = "KEY TAKEAWAYS"
-        impact_label = "WHY IT MATTERS"
+        accent_color = "#7c3aed"
+        accent_light = "#f5f3ff"
+        category_label = "AI & TECH"
+        read_more_label = "View Original Report"
 
-    rendered_summary = "".join(
-        f'<div class="list-item"><span class="number-badge sum-badge">{index + 1}</span><span>{html.escape(point)}</span></div>'
-        for index, point in enumerate(summary_points[:5])
-    )
-    rendered_impact = "".join(
-        f'<div class="list-item"><span class="number-badge imp-badge">{index + 1}</span><span>{html.escape(point)}</span></div>'
-        for index, point in enumerate(impact_points[:5])
+    # Render takeaway bullets
+    takeaways_html = "".join(
+        f'<li style="margin-bottom:8px;line-height:1.6;">{html.escape(point.lstrip("-• "))}</li>'
+        for point in article["takeaways"][:3]
     )
 
-    css_block = f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0&display=swap');
-
-        .ai-card-container {{ font-family: 'Inter', sans-serif; max-width: 700px; width: 100%; margin: 0 auto; padding: 10px; box-sizing: border-box; }}
-        .ai-card {{ background: #ffffff; border: 1px solid #f3f4f6; border-radius: 20px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); position: relative; overflow: hidden; }}
-        .top-gradient {{ position: absolute; top: 0; left: 0; width: 100%; height: 5px; background: linear-gradient(90deg, {grad_colors}); }}
-
-        .section-box {{ border-radius: 16px; padding: 18px; margin-bottom: 20px; }}
-        .summary-box {{ background: {badge_bg_sum}; border: 1px solid {badge_bg_sum}; }}
-        .impact-box {{ background: {badge_bg_imp}; border: 1px solid {badge_bg_imp}; }}
-
-        .list-item {{ display: flex; align-items: flex-start; margin-bottom: 10px; font-size: 15px; line-height: 1.6; color: #374151; }}
-        .number-badge {{ flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; margin-right: 10px; margin-top: 3px; }}
-        .sum-badge {{ background: {pill_sum}; color: white; }}
-        .imp-badge {{ background: {pill_imp}; color: white; }}
-
-        .read-btn {{ display: block; background: #111827; color: white !important; text-decoration: none; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 14px; text-align: center; margin-bottom: 20px; transition: transform 0.2s; }}
-        .read-btn:hover {{ transform: translateY(-2px); }}
-
-        .stats-bar {{ display: flex; justify-content: center; align-items: center; border-top: 1px solid #f3f4f6; padding-top: 15px; margin-top: 10px; }}
-        .stat-item {{ display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 50px; }}
-
-        .share-btn {{ background: #f0fdf4; color: #16a34a; cursor: pointer; border: none; transition: all 0.2s ease; width: 100%; justify-content: center; }}
-        .share-btn:hover {{ background: #dcfce7; transform: scale(1.02); }}
-        .icon {{ font-size: 18px; font-family: 'Material Symbols Rounded'; }}
-    </style>
-    """
-
-    share_title = json.dumps(item["title"])
-    share_text = json.dumps(f"Check this {category} Update: {item['title']}")
-
-    script_block = f"""
-    <script>
-        function sharePost() {{
-            const url = window.location.href;
-            const text = {share_text};
-            if (navigator.share) {{
-                navigator.share({{ title: {share_title}, text: text, url: url }});
-            }} else {{
-                window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url));
-            }}
-        }}
-    </script>
-    """
+    source_domain = item["source"]
 
     final_html = f"""
-    {css_block}
-    <div class="ai-card-container">
-        <div class="ai-card">
-            <div class="top-gradient"></div>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    .xai-wrap {{
+        font-family: 'Inter', sans-serif;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 12px;
+        color: #1f2937;
+        line-height: 1.7;
+        font-size: 16px;
+    }}
+    .xai-meta {{
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: {accent_color};
+        margin-bottom: 8px;
+    }}
+    .xai-title {{
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1.3;
+        color: #111827;
+        margin: 0 0 20px 0;
+    }}
+    .xai-divider {{
+        border: none;
+        border-top: 2px solid {accent_light};
+        margin: 24px 0;
+    }}
+    .xai-section-label {{
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #9ca3af;
+        margin-bottom: 10px;
+    }}
+    .xai-paragraph {{
+        color: #374151;
+        margin-bottom: 20px;
+        line-height: 1.8;
+    }}
+    .xai-takeaways {{
+        background: {accent_light};
+        border-left: 4px solid {accent_color};
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 24px 0;
+    }}
+    .xai-takeaways ul {{
+        margin: 0;
+        padding-left: 18px;
+        color: #374151;
+        font-size: 15px;
+    }}
+    .xai-source {{
+        font-size: 13px;
+        color: #6b7280;
+        padding-top: 20px;
+        border-top: 1px solid #f3f4f6;
+        margin-top: 24px;
+    }}
+    .xai-source a {{
+        color: {accent_color};
+        text-decoration: none;
+        font-weight: 600;
+    }}
+    .xai-source a:hover {{ text-decoration: underline; }}
+    .xai-share {{
+        display: inline-block;
+        margin-top: 16px;
+        background: #111827;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        border: none;
+    }}
+</style>
 
-            <div style="margin-bottom: 20px;">
-                <span style="background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; text-transform: uppercase;">
-                    {date_str} &bull; {html.escape(category)}
-                </span>
-                <h1 style="color: #111827; font-size: 22px; font-weight: 800; margin-top: 12px; line-height: 1.3;">
-                    {html.escape(item["title"])}
-                </h1>
-            </div>
+<script>
+    function xaiShare() {{
+        const url = window.location.href;
+        const text = "Interesting read: {html.escape(item['title'])}";
+        if (navigator.share) {{
+            navigator.share({{ title: "{html.escape(item['title'])}", text: text, url: url }});
+        }} else {{
+            window.open('https://wa.me/?text=' + encodeURIComponent(text + ' ' + url));
+        }}
+    }}
+</script>
 
-            <div style="margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; margin-bottom: 8px; color: {pill_sum};">
-                    <span class="material-symbols-rounded" style="margin-right: 6px;">{icon_sum}</span>
-                    <strong style="font-size: 12px; letter-spacing: 0.5px;">{summary_label}</strong>
-                </div>
-                <div class="section-box summary-box">
-                    {rendered_summary}
-                </div>
-            </div>
+<div class="xai-wrap">
 
-            <div style="margin-bottom: 20px;">
-                <div style="display: flex; align-items: center; margin-bottom: 8px; color: {pill_imp};">
-                    <span class="material-symbols-rounded" style="margin-right: 6px;">{icon_imp}</span>
-                    <strong style="font-size: 12px; letter-spacing: 0.5px;">{impact_label}</strong>
-                </div>
-                <div class="section-box impact-box">
-                    {rendered_impact}
-                </div>
-            </div>
+    <div class="xai-meta">{date_str} &bull; {category_label}</div>
+    <h1 class="xai-title">{html.escape(item["title"])}</h1>
 
-            <a href="{html.escape(item['link'], quote=True)}" class="read-btn" target="_blank">Read Full Source</a>
+    <p class="xai-paragraph">{html.escape(article["opening"])}</p>
 
-            <div class="stats-bar">
-                <button class="stat-item share-btn" onclick="sharePost()">
-                    <span class="icon">share</span>
-                    <span>Share This Update</span>
-                </button>
-            </div>
-        </div>
+    <hr class="xai-divider">
+
+    <div class="xai-section-label">Background</div>
+    <p class="xai-paragraph">{html.escape(article["context"])}</p>
+
+    <div class="xai-section-label">Analysis</div>
+    <p class="xai-paragraph">{html.escape(article["analysis"])}</p>
+
+    <div class="xai-section-label">What to Watch</div>
+    <p class="xai-paragraph">{html.escape(article["impact"])}</p>
+
+    <div class="xai-takeaways">
+        <div class="xai-section-label" style="margin-bottom:10px;">Key Takeaways</div>
+        <ul>{takeaways_html}</ul>
     </div>
-    {script_block}
-    """
+
+    <div class="xai-source">
+        Originally reported by <a href="{html.escape(item['link'], quote=True)}" target="_blank" rel="noopener">{html.escape(source_domain)}</a>
+        &mdash; <a href="{html.escape(item['link'], quote=True)}" target="_blank" rel="noopener">{read_more_label} &rarr;</a>
+    </div>
+
+    <button class="xai-share" onclick="xaiShare()">&#8679; Share This Story</button>
+
+</div>
+"""
     return final_html, date_str
 
 
@@ -727,17 +635,15 @@ def main():
                     continue
 
                 desc = entry.get("summary", "") or entry.get("description", "")
-
-                summary, impact = get_analysis(entry.title, entry.link, desc, category)
+                article = get_analysis(entry.title, entry.link, desc, category)
                 source_name = url.split("/")[2].replace("www.", "")
+
                 item = {
                     "title": entry.title,
                     "link": entry.link,
-                    "summary": summary,
-                    "impact": impact,
+                    "article": article,
                     "source": source_name,
                 }
-
                 items.append(item)
                 seen_title_keys.add(normalize_title_key(entry.title))
                 seen_links.add(entry.link.strip())
@@ -764,20 +670,22 @@ def main():
             "content": html_body,
             "labels": [label_tag, "Trending"],
         }
-
         post = service.posts().insert(blogId=BLOG_ID, body=body).execute()
         print(f"Blogger success: {post['url']}")
 
+        # Telegram still uses the structured bullet format (fine for messaging)
         item = items[0]
+        article = item["article"]
+        takeaway_bullets = "\n".join(
+            f"• {t.lstrip('-• ')}" for t in article["takeaways"][:3]
+        )
         header = "*MARKET & TRADING DIGEST*" if category == "TRADING" else "*AI & TECH DIGEST*"
-
         telegram_msg = (
             f"{header}\n\n"
             f"*{item['title']}*\n\n"
-            f"*SUMMARY*\n{item['summary']}\n\n"
-            f"*IMPACT*\n{item['impact']}\n\n"
-            f"[Read Source]({item['link']})\n\n"
-            f"[Read on Blog]({post['url']})"
+            f"{article['opening']}\n\n"
+            f"*Key Points:*\n{takeaway_bullets}\n\n"
+            f"[Read on Blog]({post['url']}) | [Original Source]({item['link']})"
         )
 
         telegram_response = requests.post(
